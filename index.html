@@ -61,8 +61,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .shift-btn{display:flex;align-items:center;gap:10px;padding:14px 20px;border-radius:var(--radius-lg);border:2px solid var(--border);background:white;cursor:pointer;transition:all .2s;font-family:inherit;font-size:14px;font-weight:700;color:var(--text2);flex:1;justify-content:center;}
 .shift-btn.active{border-color:var(--accent);background:rgba(0,119,182,.06);color:var(--accent);}
 .pool-card{background:white;border:1.5px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:12px;box-shadow:var(--shadow);}
-.pool-card-header{background:linear-gradient(135deg,rgba(0,119,182,.07),rgba(0,180,216,.07));padding:13px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid var(--border);}
+.pool-card-header{background:linear-gradient(135deg,rgba(0,119,182,.07),rgba(0,180,216,.07));padding:13px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid var(--border);cursor:pointer;user-select:none;}
+.pool-card-header:hover{background:linear-gradient(135deg,rgba(0,119,182,.13),rgba(0,180,216,.13));}
 .pool-name{font-size:15px;font-weight:800;color:var(--accent);}
+.pool-checkbox{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
+.pool-body{display:none;}
+.pool-body.enabled{display:block;}
+.pool-card.checked .pool-card-header{background:linear-gradient(135deg,rgba(5,150,105,.1),rgba(0,180,216,.1));border-bottom-color:var(--good);}
+.pool-card.checked .pool-name{color:var(--good);}
+.pool-disabled-hint{font-size:11px;color:var(--text3);font-style:italic;padding:8px 18px;}
 .pool-body{padding:16px 18px;}
 .pool-measurements{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .measure-field{display:flex;flex-direction:column;gap:5px;}
@@ -210,6 +217,12 @@ tr:hover td{background:rgba(0,119,182,.025);}
         </div>
       </div>
       <div id="pools-form"></div>
+      <div class="card" style="margin-top:12px">
+        <div class="form-group" style="margin-bottom:0">
+          <label>💬 კომენტარი</label>
+          <textarea id="rep-comment" placeholder="დამატებითი შენიშვნა ან კომენტარი..." rows="3" style="resize:vertical;min-height:80px"></textarea>
+        </div>
+      </div>
       <button class="btn btn-primary btn-full" style="margin-top:8px;padding:15px;font-size:15px" onclick="submitReport()">📤 რეპორტის გაგზავნა</button>
     </div>
     <div class="section" id="sec-myreports">
@@ -285,7 +298,7 @@ const POOLS=[
   'ოლიმპიური აუზი','13 აუზი','13ის ჯაკუზი 1','13ის ჯაკუზი 2','13ის საბავშო',
   '15 აუზი','16 აუზი','აკვაპარკი დიდი','აკვაპარკი საბავშო'
 ];
-const CHEMICALS=['ქლორი (კგ)','pH+ (კგ)','pH- (კგ)'];
+const CHEMICALS=['ქლორი (კგ)','pH+ (კგ)','pH- (კგ)','ალგეციდი (კგ)'];
 
 let currentUser=null,currentRole=null,allReports=[],myReports=[],allUsers=[],selectedShift=null;
 const checkState={};
@@ -411,8 +424,12 @@ function buildPoolForm(){
   const container=document.getElementById('pools-form');
   container.innerHTML=POOLS.map(pool=>`
     <div class="pool-card" id="pc-${sl(pool)}">
-      <div class="pool-card-header"><div class="pool-name">🏊 ${e(pool)}</div></div>
-      <div class="pool-body">
+      <div class="pool-card-header" onclick="togglePoolCard('${sl(pool)}')">
+        <div class="pool-name">🏊 ${e(pool)}</div>
+        <input type="checkbox" class="pool-checkbox" id="cb-${sl(pool)}" onclick="event.stopPropagation();togglePoolCard('${sl(pool)}')">
+      </div>
+      <div class="pool-disabled-hint" id="hint-${sl(pool)}">↑ მონიშნეთ შესავსებად</div>
+      <div class="pool-body" id="pb-${sl(pool)}">
         <div class="pool-measurements">
           <div class="measure-field">
             <div class="measure-label">🧪 PH დონე</div>
@@ -430,6 +447,12 @@ function buildPoolForm(){
           <div class="check-section-label" style="margin-top:4px">ფილტრის გარეცხვა</div>
           <button class="check-btn" id="filt-y-${sl(pool)}" onclick="toggleCheck('filt','${sl(pool)}','yes')">✅ გარეცხილია</button>
           <button class="check-btn" id="filt-n-${sl(pool)}" onclick="toggleCheck('filt','${sl(pool)}','no')">❌ არ გარეცხილა</button>
+          <div class="check-section-label" style="margin-top:4px">გაჩოთქვა</div>
+          <button class="check-btn" id="spla-y-${sl(pool)}" onclick="toggleCheck('spla','${sl(pool)}','yes')">✅ შესრულდა</button>
+          <button class="check-btn" id="spla-n-${sl(pool)}" onclick="toggleCheck('spla','${sl(pool)}','no')">❌ არ შესრულდა</button>
+          <div class="check-section-label" style="margin-top:4px">ცხაურების გარეცხვა</div>
+          <button class="check-btn" id="grid-y-${sl(pool)}" onclick="toggleCheck('grid','${sl(pool)}','yes')">✅ გარეცხილია</button>
+          <button class="check-btn" id="grid-n-${sl(pool)}" onclick="toggleCheck('grid','${sl(pool)}','no')">❌ არ გარეცხილა</button>
         </div>
         <div class="chem-section-label">⚗️ ქიმიკატების დამატება</div>
         <div class="chem-grid">
@@ -442,6 +465,16 @@ function buildPoolForm(){
       </div>
     </div>`).join('');
 }
+
+window.togglePoolCard=function(poolSlug){
+  const cb=document.getElementById('cb-'+poolSlug);
+  cb.checked=!cb.checked;
+  const card=document.getElementById('pc-'+poolSlug);
+  const body=document.getElementById('pb-'+poolSlug);
+  const hint=document.getElementById('hint-'+poolSlug);
+  if(cb.checked){card.classList.add('checked');body.classList.add('enabled');hint.style.display='none';}
+  else{card.classList.remove('checked');body.classList.remove('enabled');hint.style.display='';}
+};
 
 window.toggleCheck=function(type,poolSlug,val){
   if(!checkState[poolSlug])checkState[poolSlug]={};
@@ -477,19 +510,25 @@ window.submitReport=async function(){
   const poolsData={};
   for(const pool of POOLS){
     const s=sl(pool);
+    const cb=document.getElementById('cb-'+s);
+    if(!cb||!cb.checked)continue;
     const ph=parseFloat(document.getElementById(`ph-${s}`)?.value)||null;
     const cl=parseFloat(document.getElementById(`cl-${s}`)?.value)||null;
     const surf=checkState[s]?.surf||null;
     const filt=checkState[s]?.filt||null;
+    const spla=checkState[s]?.spla||null;
+    const grid=checkState[s]?.grid||null;
     const chems={};
     CHEMICALS.forEach(c=>{chems[c]=parseFloat(document.getElementById(`ch-${s}-${sl(c)}`)?.value)||0;});
-    poolsData[pool]={ph,cl,surf,filt,chems};
+    poolsData[pool]={ph,cl,surf,filt,spla,grid,chems};
   }
   try{
     toast('⏳ ინახება...','info');
     await addDoc(collection(db,'pool_reports'),{
       operatorId:currentUser.uid,operatorName:operator,
-      date,shift:selectedShift,pools:poolsData,submittedAt:serverTimestamp()
+      date,shift:selectedShift,pools:poolsData,
+      comment:document.getElementById('rep-comment').value.trim()||null,
+      submittedAt:serverTimestamp()
     });
     toast('✓ რეპორტი შენახულია!','success');
     resetForm();
@@ -502,16 +541,22 @@ function resetForm(){
     const ph=document.getElementById(`ph-${s}`),cl=document.getElementById(`cl-${s}`);
     if(ph){ph.value='';ph.className='measure-input';}
     if(cl){cl.value='';cl.className='measure-input';}
-    ['surf','filt'].forEach(type=>{
+    ['surf','filt','spla','grid'].forEach(type=>{
       ['y','n'].forEach(v=>{const btn=document.getElementById(`${type}-${v}-${s}`);if(btn)btn.className='check-btn';});
     });
     CHEMICALS.forEach(c=>{const el=document.getElementById(`ch-${s}-${sl(c)}`);if(el)el.value='';});
     if(checkState[s])delete checkState[s];
+    const cb=document.getElementById('cb-'+s);
+    if(cb){cb.checked=false;}
+    const card=document.getElementById('pc-'+s);if(card)card.classList.remove('checked');
+    const body=document.getElementById('pb-'+s);if(body)body.classList.remove('enabled');
+    const hint=document.getElementById('hint-'+s);if(hint)hint.style.display='';
   });
   selectedShift=null;
   document.getElementById('sh-morning').classList.remove('active');
   document.getElementById('sh-evening').classList.remove('active');
   document.getElementById('rep-date').valueAsDate=new Date();
+  const cm=document.getElementById('rep-comment');if(cm)cm.value='';
 }
 
 function listenMyReports(){
@@ -566,7 +611,7 @@ function reportCard(r){
   const shiftClass=r.shift==='morning'?'shift-morning':'shift-evening';
   const pools=r.pools||{};
   const issues=Object.values(pools).filter(p=>
-    (p.ph&&(p.ph<7.2||p.ph>7.8))||(p.cl&&(p.cl<1.0||p.cl>3.0))||p.surf==='no'||p.filt==='no'
+    (p.ph&&(p.ph<7.2||p.ph>7.8))||(p.cl&&(p.cl<1.0||p.cl>3.0))||p.surf==='no'||p.filt==='no'||p.spla==='no'||p.grid==='no'
   ).length;
   return `<div class="report-card">
     <div class="report-header" onclick="toggleReport('${r.id}')">
@@ -597,10 +642,13 @@ function reportCard(r){
             </div></div>
             <div class="data-item"><div class="data-key">ზედაპირი</div><div class="data-val">${pd.surf==='yes'?'✅ გარეცხ.':pd.surf==='no'?'❌ არა':'—'}</div></div>
             <div class="data-item"><div class="data-key">ფილტრი</div><div class="data-val">${pd.filt==='yes'?'✅ გარეცხ.':pd.filt==='no'?'❌ არა':'—'}</div></div>
+            <div class="data-item"><div class="data-key">გაჩოთქვა</div><div class="data-val">${pd.spla==='yes'?'✅ შესრ.':pd.spla==='no'?'❌ არა':'—'}</div></div>
+            <div class="data-item"><div class="data-key">ცხაური</div><div class="data-val">${pd.grid==='yes'?'✅ გარეცხ.':pd.grid==='no'?'❌ არა':'—'}</div></div>
             ${CHEMICALS.map(c=>`<div class="data-item"><div class="data-key">${e(c.split(' ')[0])}</div><div class="data-val">${pd.chems?.[c]??0} კგ</div></div>`).join('')}
           </div>
         </div>`;
       }).join('')}
+      ${r.comment?`<div style="margin-top:12px;padding:12px 14px;background:rgba(0,119,182,.05);border-radius:10px;border-left:3px solid var(--accent)"><div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">💬 კომენტარი</div><div style="font-size:13px;color:var(--text);line-height:1.6">${e(r.comment)}</div></div>`:''}
     </div>
   </div>`;
 }
@@ -614,7 +662,7 @@ function renderAdminStats(){
   const today=new Date().toISOString().slice(0,10);
   const todayReps=allReports.filter(r=>r.date===today);
   const issues=allReports.reduce((acc,r)=>acc+Object.values(r.pools||{}).filter(p=>
-    (p.ph&&(p.ph<7.2||p.ph>7.8))||(p.cl&&(p.cl<1.0||p.cl>3.0))||p.surf==='no'||p.filt==='no'
+    (p.ph&&(p.ph<7.2||p.ph>7.8))||(p.cl&&(p.cl<1.0||p.cl>3.0))||p.surf==='no'||p.filt==='no'||p.spla==='no'||p.grid==='no'
   ).length,0);
   el.innerHTML=[
     {n:allReports.length,l:'სულ რეპორტი',c:'var(--accent)'},
@@ -671,7 +719,7 @@ window.exportExcel=function(){
   if(fr)list=list.filter(r=>r.date>=fr);
   if(to)list=list.filter(r=>r.date<=to);
   if(!list.length){toast('ფილტრი ცარიელია','error');return;}
-  const hdr=['თარიღი','ცვლა','ოპერატორი','აუზი','PH','ქლორი (მგ/ლ)','ზედაპირი','ფილტრი',...CHEMICALS];
+  const hdr=['თარიღი','ცვლა','ოპერატორი','აუზი','PH','ქლორი (მგ/ლ)','ზედაპირი','ფილტრი','გაჩოთქვა','ცხაურები',...CHEMICALS,'კომენტარი'];
   const rows=[];
   list.forEach(r=>{
     const shift=r.shift==='morning'?'დილა':'საღამო';
@@ -680,7 +728,9 @@ window.exportExcel=function(){
       rows.push([r.date,shift,r.operatorName||'',pool,pd.ph??'',pd.cl??'',
         pd.surf==='yes'?'გარეცხ.':pd.surf==='no'?'არა':'—',
         pd.filt==='yes'?'გარეცხ.':pd.filt==='no'?'არა':'—',
-        ...CHEMICALS.map(c=>pd.chems?.[c]??0)]);
+        pd.spla==='yes'?'შესრ.':pd.spla==='no'?'არა':'—',
+        pd.grid==='yes'?'გარეცხ.':pd.grid==='no'?'არა':'—',
+        ...CHEMICALS.map(c=>pd.chems?.[c]??0),r.comment||'']);
     });
   });
   const csv=[hdr,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
