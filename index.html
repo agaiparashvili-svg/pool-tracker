@@ -826,6 +826,8 @@ window.sendTestEmail=async function(){
     console.error(err);
   }
 };
+
+function startEmailScheduler(){
   function check(){
     const h=new Date().getHours();
     const m=new Date().getMinutes();
