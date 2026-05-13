@@ -267,6 +267,7 @@ tr:hover td{background:rgba(0,119,182,.025);}
           <div class="form-group"><label>თარიღი მდე</label><input type="date" id="ex-to"></div>
         </div>
         <button class="btn btn-primary" onclick="exportExcel()">📊 Excel ჩამოტვირთვა</button>
+        <button class="btn btn-ghost" style="background:linear-gradient(135deg,#059669,#10b981);color:white;margin-top:10px;width:100%" onclick="sendTestEmail()">📧 სატესტო მეილის გაგზავნა</button>
       </div>
     </div>
   </div>
@@ -807,7 +808,24 @@ async function sendDailyEmail(){
   }catch(err){console.error('Email send failed:',err);}
 }
 
-function startEmailScheduler(){
+window.sendTestEmail=async function(){
+  toast('📧 იგზავნება...','info');
+  const html=buildDailyHTMLTable(allReports);
+  const today=new Date().toISOString().slice(0,10);
+  try{
+    await emailjs.send(EMAIL_SERVICE_ID,EMAIL_TEMPLATE_ID,{
+      to_email:REPORT_EMAIL,
+      subject:`🧪 სატესტო — აუზების რეპორტი ${today}`,
+      html_content:html,
+      date:today,
+      shift_label:'სატესტო'
+    });
+    toast('✅ მეილი გაიგზავნა! შეამოწმე '+REPORT_EMAIL,'success');
+  }catch(err){
+    toast('❌ შეცდომა: '+err.text,'error');
+    console.error(err);
+  }
+};
   function check(){
     const h=new Date().getHours();
     const m=new Date().getMinutes();
