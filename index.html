@@ -140,6 +140,7 @@ tr:hover td{background:rgba(0,119,182,.025);}
   .report-header{flex-direction:column;align-items:flex-start;}
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 <div id="loading-screen">
@@ -296,9 +297,9 @@ const POOLS=[
   'დახურული აუზი','დახურულის შიდა ჯაკუზი','დახურულის გარე ჯაკუზი',
   'პირველი აუზი','მეცხრეს აუზი','მეცხრეს ჯაკუზი','მეცხრეს საბავშო',
   'ოლიმპიური აუზი','13 აუზი','13ის ჯაკუზი 1','13ის ჯაკუზი 2','13ის საბავშო',
-  '15 აუზი','16 აუზი','აკვაპარკი დიდი','აკვაპარკი საბავშო'
+  '15 აუზი','16 აუზი','აკვაპარკი დიდი','აკვაპარკი საბავშო','იკე'
 ];
-const CHEMICALS=['ქლორი (კგ)','pH+ (კგ)','pH- (კგ)','ალგეციდი (კგ)'];
+const CHEMICALS=['ქლორი (კგ)','pH+ (კგ)','pH- (კგ)','ალგეციდი (კგ)','ქლორი ტაბლეტი (კგ)'];
 
 let currentUser=null,currentRole=null,allReports=[],myReports=[],allUsers=[],selectedShift=null;
 const checkState={};
@@ -744,6 +745,78 @@ function sl(s){return s.replace(/[^\w\u10D0-\u10FF]/g,'_');}
 function e(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function emptyState(icon,msg){return`<div style="text-align:center;padding:60px 20px;color:var(--text3)"><div style="font-size:48px;margin-bottom:12px;opacity:.4">${icon}</div><p style="font-size:14px;font-weight:600">${msg}</p></div>`;}
 function toast(msg,type='info'){const el=document.getElementById('toast');el.textContent=msg;el.className=`show ${type}`;clearTimeout(el._t);el._t=setTimeout(()=>el.className=type,3200);}
+
+// ======= ავტომატური დღიური მეილი =======
+const EMAIL_SERVICE_ID='service_uc9t7c5';
+const EMAIL_TEMPLATE_ID='template_c80oqpl';
+const EMAIL_PUBLIC_KEY='gMuchMs4-Nz5YFLch';
+const REPORT_EMAIL='a.gaiparashvili@lopotaresort.com';
+const SEND_HOURS=[10,19];
+
+emailjs.init(EMAIL_PUBLIC_KEY);
+
+function buildDailyHTMLTable(reports){
+  const today=new Date().toISOString().slice(0,10);
+  const todayReps=reports.filter(r=>r.date===today);
+  if(!todayReps.length)return'<p>დღეს რეპორტი არ არის.</p>';
+  let html=`<h2 style="font-family:sans-serif;color:#0077b6">🏊 აუზების დღიური რეპორტი — ${today}</h2>`;
+  for(const r of todayReps){
+    const shift=r.shift==='morning'?'🌅 დილა':'🌙 საღამო';
+    html+=`<h3 style="font-family:sans-serif;margin-top:20px">${shift} | ${e(r.operatorName||'')}</h3>`;
+    html+=`<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:sans-serif;font-size:13px;min-width:600px">
+      <thead style="background:#0077b6;color:white">
+        <tr><th>აუზი</th><th>PH</th><th>ქლ.(მგ/ლ)</th><th>ზედაპირი</th><th>ფილტრი</th><th>გაჩოთქვა</th><th>ცხაური</th>${CHEMICALS.map(c=>`<th>${e(c)}</th>`).join('')}<th>კომენტარი</th></tr>
+      </thead><tbody>`;
+    for(const[pool,pd]of Object.entries(r.pools||{})){
+      const phColor=pd.ph&&(pd.ph<7.2||pd.ph>7.8)?'#fecaca':'';
+      const clColor=pd.cl&&(pd.cl<1.0||pd.cl>3.0)?'#fecaca':'';
+      html+=`<tr>
+        <td style="font-weight:600">${e(pool)}</td>
+        <td style="background:${phColor}">${pd.ph??'—'}</td>
+        <td style="background:${clColor}">${pd.cl??'—'}</td>
+        <td>${pd.surf==='yes'?'✅':pd.surf==='no'?'❌':'—'}</td>
+        <td>${pd.filt==='yes'?'✅':pd.filt==='no'?'❌':'—'}</td>
+        <td>${pd.spla==='yes'?'✅':pd.spla==='no'?'❌':'—'}</td>
+        <td>${pd.grid==='yes'?'✅':pd.grid==='no'?'❌':'—'}</td>
+        ${CHEMICALS.map(c=>`<td>${pd.chems?.[c]??0}</td>`).join('')}
+        <td>${e(r.comment||'')}</td>
+      </tr>`;
+    }
+    html+=`</tbody></table>`;
+    if(r.comment)html+=`<p style="font-family:sans-serif;font-size:13px;color:#555;margin-top:6px">💬 <b>კომენტარი:</b> ${e(r.comment)}</p>`;
+  }
+  return html;
+}
+
+async function sendDailyEmail(){
+  const today=new Date().toISOString().slice(0,10);
+  const storageKey=`email_sent_${today}_${new Date().getHours()}`;
+  if(localStorage.getItem(storageKey))return;
+  const html=buildDailyHTMLTable(allReports);
+  const shift=new Date().getHours()<15?'🌅 დილა (10:00)':'🌙 საღამო (19:00)';
+  try{
+    await emailjs.send(EMAIL_SERVICE_ID,EMAIL_TEMPLATE_ID,{
+      to_email:REPORT_EMAIL,
+      subject:`🏊 აუზების რეპორტი — ${today} ${shift}`,
+      html_content:html,
+      date:today,
+      shift_label:shift
+    });
+    localStorage.setItem(storageKey,'1');
+    console.log('✅ Daily report email sent');
+  }catch(err){console.error('Email send failed:',err);}
+}
+
+function startEmailScheduler(){
+  function check(){
+    const h=new Date().getHours();
+    const m=new Date().getMinutes();
+    if(SEND_HOURS.includes(h)&&m===0)sendDailyEmail();
+  }
+  setInterval(check,60000);
+  check();
+}
+startEmailScheduler();
 </script>
 </body>
 </html>
