@@ -461,7 +461,7 @@ function buildPoolForm(){
           ${CHEMICALS.map(c=>`
             <div class="chem-field">
               <div class="chem-label">${e(c)}</div>
-              <input type="number" step="0.1" min="0" class="chem-input" id="ch-${sl(pool)}-${sl(c)}" placeholder="0">
+              <input type="number" step="0.1" min="0" class="chem-input" id="ch-${sl(pool)}-chem${CHEMICALS.indexOf(c)}" placeholder="0">
             </div>`).join('')}
         </div>
       </div>
@@ -521,7 +521,7 @@ window.submitReport=async function(){
     const spla=checkState[s]?.spla||null;
     const grid=checkState[s]?.grid||null;
     const chems={};
-    CHEMICALS.forEach(c=>{chems[c]=parseFloat(document.getElementById(`ch-${s}-${sl(c)}`)?.value)||0;});
+    CHEMICALS.forEach((c,i)=>{chems[c]=parseFloat(document.getElementById(`ch-${s}-chem${i}`)?.value)||0;});
     poolsData[pool]={ph,cl,surf,filt,spla,grid,chems};
   }
   try{
@@ -546,7 +546,7 @@ function resetForm(){
     ['surf','filt','spla','grid'].forEach(type=>{
       ['y','n'].forEach(v=>{const btn=document.getElementById(`${type}-${v}-${s}`);if(btn)btn.className='check-btn';});
     });
-    CHEMICALS.forEach(c=>{const el=document.getElementById(`ch-${s}-${sl(c)}`);if(el)el.value='';});
+    CHEMICALS.forEach((c,i)=>{const el=document.getElementById(`ch-${s}-chem${i}`);if(el)el.value='';});
     if(checkState[s])delete checkState[s];
     const cb=document.getElementById('cb-'+s);
     if(cb){cb.checked=false;}
