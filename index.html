@@ -61,7 +61,24 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .shift-btn{display:flex;align-items:center;gap:10px;padding:14px 20px;border-radius:var(--radius-lg);border:2px solid var(--border);background:white;cursor:pointer;transition:all .2s;font-family:inherit;font-size:14px;font-weight:700;color:var(--text2);flex:1;justify-content:center;}
 .shift-btn.active{border-color:var(--accent);background:rgba(0,119,182,.06);color:var(--accent);}
 .pool-card{background:white;border:1.5px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:12px;box-shadow:var(--shadow);}
-.pool-card-header{background:linear-gradient(135deg,rgba(0,119,182,.07),rgba(0,180,216,.07));padding:13px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid var(--border);cursor:pointer;user-select:none;}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;}
+@media(max-width:600px){.stats-grid{grid-template-columns:1fr;}}
+.stats-card{background:var(--surface);border-radius:16px;border:1.5px solid var(--border);overflow:hidden;}
+.stats-card-header{padding:12px 16px;font-weight:800;font-size:14px;background:linear-gradient(135deg,rgba(0,119,182,.08),rgba(0,180,216,.08));border-bottom:1.5px solid var(--border);}
+.stats-table{width:100%;border-collapse:collapse;}
+.stats-table tr:not(:last-child){border-bottom:1px solid var(--border);}
+.stats-table td{padding:9px 14px;font-size:13px;}
+.stats-table td:last-child{text-align:right;font-weight:700;color:var(--accent);}
+.stats-table tr:hover{background:rgba(0,119,182,.04);}
+.stats-zero{color:var(--text3)!important;}
+.stats-bar-wrap{background:var(--border);border-radius:4px;height:6px;margin-top:3px;overflow:hidden;}
+.stats-bar{height:6px;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s;}
+.stats-op-row td:first-child{font-weight:600;}
+.stats-summary{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+.stat-pill{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:12px 18px;flex:1;min-width:130px;text-align:center;}
+.stat-pill .pill-val{font-size:26px;font-weight:900;color:var(--accent);}
+.stat-pill .pill-lbl{font-size:11px;color:var(--text3);margin-top:2px;font-weight:600;}
+;padding:13px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid var(--border);cursor:pointer;user-select:none;}
 .pool-card-header:hover{background:linear-gradient(135deg,rgba(0,119,182,.13),rgba(0,180,216,.13));}
 .pool-name{font-size:15px;font-weight:800;color:var(--accent);}
 .pool-checkbox{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
@@ -255,6 +272,18 @@ tr:hover td{background:rgba(0,119,182,.025);}
         <tbody id="users-tbody"></tbody>
       </table></div></div>
     </div>
+    <div class="section" id="sec-stats">
+      <div class="section-header"><h2>📈 სტატისტიკა</h2></div>
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group"><label>ოპერატორი</label><select id="st-op" onchange="renderStats()"><option value="all">ყველა</option></select></div>
+          <div class="form-group"><label>ცვლა</label><select id="st-shift" onchange="renderStats()"><option value="all">ყველა</option><option value="morning">🌅 დილა</option><option value="evening">🌙 საღამო</option></select></div>
+          <div class="form-group"><label>თარიღი დან</label><input type="date" id="st-from" onchange="renderStats()"></div>
+          <div class="form-group"><label>თარიღი მდე</label><input type="date" id="st-to" onchange="renderStats()"></div>
+        </div>
+      </div>
+      <div id="stats-content"></div>
+    </div>
     <div class="section" id="sec-export">
       <div class="section-header"><h2>📥 Excel ექსპორტი</h2></div>
       <div class="card">
@@ -388,7 +417,7 @@ function buildNav(role){
   const nav=document.getElementById('main-nav');nav.innerHTML='';
   const map={
     operator:[['sec-submit','📋 რეპორტი'],['sec-myreports','📁 ჩემი'],['sec-allreports','📊 ყველა']],
-    admin:[['sec-allreports','📊 ყველა'],['sec-users','👥 მომხმარებლები'],['sec-export','📥 ექსპორტი']],
+    admin:[['sec-allreports','📊 ყველა'],['sec-stats','📈 სტატისტიკა'],['sec-users','👥 მომხმარებლები'],['sec-export','📥 ექსპორტი']],
   };
   const items=map[role]||[];
   if(!items.length){showSection('sec-pending');return;}
@@ -409,6 +438,7 @@ function activateSection(id,el){
   el.classList.add('active');showSection(id);
   if(id==='sec-allreports')renderAllReports();
   if(id==='sec-myreports')renderMyReports();
+  if(id==='sec-stats')renderStats();
   if(id==='sec-users')renderUsers();
 }
 function showSection(id){
@@ -606,7 +636,139 @@ function renderAllReports(){
   if(to)list=list.filter(r=>r.date<=to);
   el.innerHTML=list.length?list.map(r=>reportCard(r)).join(''):emptyState('📭','რეპორტები არ მოიძებნა');
 }
-window.renderAllReports=renderAllReports;
+window.renderStats=function(){
+  const op=document.getElementById('st-op')?.value||'all';
+  const sf=document.getElementById('st-shift')?.value||'all';
+  const fr=document.getElementById('st-from')?.value;
+  const to=document.getElementById('st-to')?.value;
+  let list=[...allReports];
+  if(op!=='all')list=list.filter(r=>r.operatorId===op);
+  if(sf!=='all')list=list.filter(r=>r.shift===sf);
+  if(fr)list=list.filter(r=>r.date>=fr);
+  if(to)list=list.filter(r=>r.date<=to);
+
+  const el=document.getElementById('stats-content');
+  if(!el)return;
+  if(!list.length){el.innerHTML=`<div style="padding:40px;text-align:center;color:var(--text3)">მონაცემი არ მოიძებნა</div>`;return;}
+
+  // ---- ქიმიკატების ჯამი ----
+  const chemTotals={};
+  CHEMICALS.forEach(c=>chemTotals[c]=0);
+  // ---- სამუშაოს ჯამი ----
+  const work={surf:{yes:0,no:0},filt:{yes:0,no:0},spla:{yes:0,no:0},grid:{yes:0,no:0}};
+  const workLabels={surf:'ზედაპირი',filt:'ფილტრი',spla:'გაჩოთქვა',grid:'ცხაური'};
+  // ---- ოპერატორები ----
+  const opStats={};
+  // ---- PH/CL გადახრები ----
+  let phOk=0,phBad=0,clOk=0,clBad=0,totalPools=0;
+
+  list.forEach(r=>{
+    const opName=r.operatorName||'უცნობი';
+    if(!opStats[opName])opStats[opName]={reports:0,pools:0,chems:{},workDone:0,workTotal:0};
+    opStats[opName].reports++;
+    Object.entries(r.pools||{}).forEach(([pool,pd])=>{
+      totalPools++;
+      opStats[opName].pools++;
+      // chems
+      CHEMICALS.forEach(c=>{
+        const v=getChem(pd.chems,c);
+        chemTotals[c]+=v;
+        if(!opStats[opName].chems[c])opStats[opName].chems[c]=0;
+        opStats[opName].chems[c]+=v;
+      });
+      // work
+      ['surf','filt','spla','grid'].forEach(k=>{
+        if(pd[k]==='yes'){work[k].yes++;opStats[opName].workDone++;}
+        else if(pd[k]==='no')work[k].no++;
+        if(pd[k])opStats[opName].workTotal++;
+      });
+      // ph/cl
+      if(pd.ph!=null){if(pd.ph>=7.2&&pd.ph<=7.8)phOk++;else phBad++;}
+      if(pd.cl!=null){if(pd.cl>=1.0&&pd.cl<=3.0)clOk++;else clBad++;}
+    });
+  });
+
+  const maxChem=Math.max(...Object.values(chemTotals),0.01);
+  const totalWork=Object.values(work).reduce((a,w)=>a+w.yes+w.no,0);
+
+  // summary pills
+  const totalChemKg=Object.values(chemTotals).reduce((a,b)=>a+b,0);
+  const workDonePct=totalWork?Math.round(Object.values(work).reduce((a,w)=>a+w.yes,0)/totalWork*100):0;
+
+  let html=`<div class="stats-summary">
+    <div class="stat-pill"><div class="pill-val">${list.length}</div><div class="pill-lbl">📋 რეპორტი</div></div>
+    <div class="stat-pill"><div class="pill-val">${totalPools}</div><div class="pill-lbl">🏊 აუზი (სულ)</div></div>
+    <div class="stat-pill"><div class="pill-val">${totalChemKg.toFixed(1)} კგ</div><div class="pill-lbl">⚗️ ქიმიკატი სულ</div></div>
+    <div class="stat-pill"><div class="pill-val">${workDonePct}%</div><div class="pill-lbl">✅ შესრულება</div></div>
+    <div class="stat-pill"><div class="pill-val" style="color:${phBad?'var(--danger)':'var(--good)'}">${phBad}</div><div class="pill-lbl">⚠️ PH გადახრა</div></div>
+    <div class="stat-pill"><div class="pill-val" style="color:${clBad?'var(--danger)':'var(--good)'}">${clBad}</div><div class="pill-lbl">⚠️ ქლ. გადახრა</div></div>
+  </div>
+  <div class="stats-grid">`;
+
+  // ქიმიკატების ბარათი
+  html+=`<div class="stats-card">
+    <div class="stats-card-header">⚗️ ქიმიკატების ჯამი</div>
+    <table class="stats-table">`;
+  CHEMICALS.forEach(c=>{
+    const v=chemTotals[c];
+    const pct=Math.round(v/maxChem*100);
+    html+=`<tr><td>
+      <div>${e(c)}</div>
+      <div class="stats-bar-wrap"><div class="stats-bar" style="width:${pct}%"></div></div>
+    </td><td class="${v===0?'stats-zero':''}">${v.toFixed(2)} კგ</td></tr>`;
+  });
+  html+=`</table></div>`;
+
+  // შესრულებული სამუშაო
+  html+=`<div class="stats-card">
+    <div class="stats-card-header">🧹 შესრულებული სამუშაო</div>
+    <table class="stats-table">`;
+  Object.entries(workLabels).forEach(([k,label])=>{
+    const yes=work[k].yes, no=work[k].no, tot=yes+no;
+    const pct=tot?Math.round(yes/tot*100):0;
+    html+=`<tr><td>
+      <div style="display:flex;justify-content:space-between"><span>${label}</span><span style="font-size:11px;color:var(--text3)">${yes}/${tot}</span></div>
+      <div class="stats-bar-wrap"><div class="stats-bar" style="width:${pct}%;background:linear-gradient(90deg,#059669,#10b981)"></div></div>
+    </td><td class="${pct<50?'stats-zero':''}" style="color:${pct>=80?'var(--good)':pct>=50?'var(--warning)':'var(--danger)'}">${pct}%</td></tr>`;
+  });
+  html+=`</table></div>`;
+
+  // ოპერატორების ბარათი (სრული სიგანე)
+  const opArr=Object.entries(opStats).sort((a,b)=>b[1].pools-a[1].pools);
+  html+=`</div><div class="stats-card" style="margin-top:14px">
+    <div class="stats-card-header">👤 ოპერატორების სტატისტიკა</div>
+    <table class="stats-table">
+      <tr style="background:rgba(0,119,182,.05);font-size:11px;color:var(--text3)">
+        <td><b>ოპერატორი</b></td>
+        <td style="text-align:right"><b>რეპ.</b></td>
+        <td style="text-align:right"><b>აუზი</b></td>
+        ${CHEMICALS.map(c=>`<td style="text-align:right;font-size:10px"><b>${e(c.split(' ')[0])}</b></td>`).join('')}
+        <td style="text-align:right"><b>შესრ.%</b></td>
+      </tr>`;
+  opArr.forEach(([name,d])=>{
+    const pct=d.workTotal?Math.round(d.workDone/d.workTotal*100):0;
+    html+=`<tr class="stats-op-row">
+      <td>${e(name)}</td>
+      <td>${d.reports}</td>
+      <td>${d.pools}</td>
+      ${CHEMICALS.map(c=>`<td class="${(d.chems[c]||0)===0?'stats-zero':''}">${(d.chems[c]||0).toFixed(1)}</td>`).join('')}
+      <td style="color:${pct>=80?'var(--good)':pct>=50?'var(--warning)':'var(--danger)'}">${pct}%</td>
+    </tr>`;
+  });
+  html+=`</table></div>`;
+
+  el.innerHTML=html;
+};
+
+function populateStatsOp(){
+  const sel=document.getElementById('st-op');if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="all">ყველა ოპერატორი</option>';
+  allUsers.filter(u=>u.role==='operator'||u.role==='admin').forEach(u=>{
+    sel.innerHTML+=`<option value="${u.id}">${e(u.name||u.email)}</option>`;
+  });
+  sel.value=cur;
+}
 
 function reportCard(r){
   const shiftLabel=r.shift==='morning'?'🌅 დილა':'🌙 საღამო';
@@ -702,7 +864,7 @@ window.delUser=async function(id){
 
 function populateOpSelects(){
   const ops=allUsers.filter(u=>u.role==='operator'||u.role==='admin');
-  ['arf-op','ex-op'].forEach(id=>{
+  ['arf-op','ex-op','st-op'].forEach(id=>{
     const sel=document.getElementById(id);if(!sel)return;
     const cur=sel.value;
     sel.innerHTML='<option value="all">ყველა ოპერატორი</option>'+ops.map(u=>`<option value="${u.id}">${e(u.name)}</option>`).join('');
