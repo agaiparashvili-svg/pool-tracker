@@ -646,7 +646,7 @@ function reportCard(r){
             <div class="data-item"><div class="data-key">ფილტრი</div><div class="data-val">${pd.filt==='yes'?'✅ გარეცხ.':pd.filt==='no'?'❌ არა':'—'}</div></div>
             <div class="data-item"><div class="data-key">გაჩოთქვა</div><div class="data-val">${pd.spla==='yes'?'✅ შესრ.':pd.spla==='no'?'❌ არა':'—'}</div></div>
             <div class="data-item"><div class="data-key">ცხაური</div><div class="data-val">${pd.grid==='yes'?'✅ გარეცხ.':pd.grid==='no'?'❌ არა':'—'}</div></div>
-            ${CHEMICALS.map(c=>`<div class="data-item"><div class="data-key">${e(c.split(' ')[0])}</div><div class="data-val">${pd.chems?.[c]??0} კგ</div></div>`).join('')}
+            ${CHEMICALS.map(c=>`<div class="data-item"><div class="data-key">${e(c.split(' ')[0])}</div><div class="data-val">${getChem(pd.chems,c)} კგ</div></div>`).join('')}
           </div>
         </div>`;
       }).join('')}
@@ -732,7 +732,7 @@ window.exportExcel=function(){
         pd.filt==='yes'?'გარეცხ.':pd.filt==='no'?'არა':'—',
         pd.spla==='yes'?'შესრ.':pd.spla==='no'?'არა':'—',
         pd.grid==='yes'?'გარეცხ.':pd.grid==='no'?'არა':'—',
-        ...CHEMICALS.map(c=>pd.chems?.[c]??0),r.comment||'']);
+        ...CHEMICALS.map(c=>getChem(pd.chems,c)),r.comment||'']);
     });
   });
   const csv=[hdr,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -744,6 +744,16 @@ window.exportExcel=function(){
 
 function sl(s){return s.replace(/[^\w\u10D0-\u10FF]/g,'_');}
 function e(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function getChem(chems,name){
+  if(!chems)return 0;
+  // try exact key first
+  if(chems[name]!=null)return chems[name];
+  // fallback: old slug key
+  const slug=sl(name);
+  if(chems[slug]!=null)return chems[slug];
+  // fallback: index-based key (shouldn't happen but safe)
+  return 0;
+}
 function emptyState(icon,msg){return`<div style="text-align:center;padding:60px 20px;color:var(--text3)"><div style="font-size:48px;margin-bottom:12px;opacity:.4">${icon}</div><p style="font-size:14px;font-weight:600">${msg}</p></div>`;}
 function toast(msg,type='info'){const el=document.getElementById('toast');el.textContent=msg;el.className=`show ${type}`;clearTimeout(el._t);el._t=setTimeout(()=>el.className=type,3200);}
 
@@ -779,7 +789,7 @@ function buildDailyHTMLTable(reports){
         <td>${pd.filt==='yes'?'✅':pd.filt==='no'?'❌':'—'}</td>
         <td>${pd.spla==='yes'?'✅':pd.spla==='no'?'❌':'—'}</td>
         <td>${pd.grid==='yes'?'✅':pd.grid==='no'?'❌':'—'}</td>
-        ${CHEMICALS.map(c=>`<td>${pd.chems?.[c]??0}</td>`).join('')}
+        ${CHEMICALS.map(c=>`<td>${getChem(pd.chems,c)}</td>`).join('')}
         <td>${e(r.comment||'')}</td>
       </tr>`;
     }
