@@ -897,23 +897,58 @@ window.exportExcel=function(){
         ...CHEMICALS.map(c=>getChem(pd.chems,c)),r.comment||'']);
     });
   });
-  const csv=[hdr,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=`auzebis_reporti_${new Date().toISOString().slice(0,10)}.csv`;a.click();
-  URL.revokeObjectURL(url);toast('✓ ჩამოიტვირთა!','success');
+  // XLSX export via SheetJS
+  const script=document.createElement('script');
+  script.src='https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js';
+  script.onload=function(){
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([hdr,...rows]);
+    // column widths
+    ws['!cols']=[{wch:12},{wch:10},{wch:18},{wch:22},{wch:8},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},
+      ...CHEMICALS.map(()=>({wch:16})),{wch:30}];
+    XLSX.utils.book_append_sheet(wb,ws,'რეპორტი');
+    XLSX.writeFile(wb,`auzebis_reporti_${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast('✓ Excel ჩამოიტვირთა!','success');
+  };
+  script.onerror=function(){
+    // fallback to CSV if SheetJS fails to load
+    const csv=[hdr,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`auzebis_reporti_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+    URL.revokeObjectURL(url);toast('✓ CSV ჩამოიტვირთა!','success');
+  };
+  // if already loaded
+  if(window.XLSX){
+    const wb=XLSX.utils.book_new();
+    const ws=XLSX.utils.aoa_to_sheet([hdr,...rows]);
+    ws['!cols']=[{wch:12},{wch:10},{wch:18},{wch:22},{wch:8},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},
+      ...CHEMICALS.map(()=>({wch:16})),{wch:30}];
+    XLSX.utils.book_append_sheet(wb,ws,'რეპორტი');
+    XLSX.writeFile(wb,`auzebis_reporti_${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast('✓ Excel ჩამოიტვირთა!','success');
+  } else {
+    document.head.appendChild(script);
+  }
 };
 
 function sl(s){return s.replace(/[^\w\u10D0-\u10FF]/g,'_');}
 function e(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function getChem(chems,name){
   if(!chems)return 0;
-  // try exact key first
-  if(chems[name]!=null)return chems[name];
-  // fallback: old slug key
+  // 1. exact key
+  if(chems[name]!=null&&chems[name]!==0)return Number(chems[name]);
+  // 2. old slug key
   const slug=sl(name);
-  if(chems[slug]!=null)return chems[slug];
-  // fallback: index-based key (shouldn't happen but safe)
+  if(chems[slug]!=null&&chems[slug]!==0)return Number(chems[slug]);
+  // 3. scan all keys case-insensitive / partial match
+  const nameLower=name.toLowerCase();
+  for(const k of Object.keys(chems)){
+    if(k.toLowerCase()===nameLower)return Number(chems[k])||0;
+  }
+  // 4. zero value exact/slug (return 0 explicitly stored)
+  if(chems[name]!=null)return Number(chems[name]);
+  if(chems[slug]!=null)return Number(chems[slug]);
   return 0;
 }
 function emptyState(icon,msg){return`<div style="text-align:center;padding:60px 20px;color:var(--text3)"><div style="font-size:48px;margin-bottom:12px;opacity:.4">${icon}</div><p style="font-size:14px;font-weight:600">${msg}</p></div>`;}
