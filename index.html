@@ -357,7 +357,7 @@ const POOLS=[
   'ოლიმპიური აუზი','13 აუზი','13ის ჯაკუზი 1','13ის ჯაკუზი 2','13ის საბავშო',
   '15 აუზი','16 აუზი','აკვაპარკი დიდი','აკვაპარკი საბავშო','იკე'
 ];
-const CHEMICALS=['ქლორი (კგ)','pH+ (კგ)','pH- (კგ)','ალგეციდი (კგ)','ქლორი ტაბლეტი (კგ)'];
+const CHEMICALS=['ქლორი (კგ)','pH+ (ლ)','pH- (ლ)','ალგეციდი (ლ)','ქლორი ტაბლეტი (ცალი)'];
 
 let currentUser=null,currentRole=null,allReports=[],myReports=[],allUsers=[],selectedShift=null;
 const checkState={};
@@ -740,10 +740,11 @@ window.renderStats=function(){
   CHEMICALS.forEach(c=>{
     const v=chemTotals[c];
     const pct=Math.round(v/maxChem*100);
+    const unit=c.match(/\(([^)]+)\)/)?.[1]||'';
     html+=`<tr><td>
       <div>${e(c)}</div>
       <div class="stats-bar-wrap"><div class="stats-bar" style="width:${pct}%"></div></div>
-    </td><td class="${v===0?'stats-zero':''}">${v.toFixed(2)} კგ</td></tr>`;
+    </td><td class="${v===0?'stats-zero':''}">${v % 1===0?v:v.toFixed(2)} ${unit}</td></tr>`;
   });
   html+=`</table></div>`;
 
@@ -770,7 +771,7 @@ window.renderStats=function(){
         <td><b>ოპერატორი</b></td>
         <td style="text-align:right"><b>რეპ.</b></td>
         <td style="text-align:right"><b>აუზი</b></td>
-        ${CHEMICALS.map(c=>`<td style="text-align:right;font-size:10px"><b>${e(c.split(' ')[0])}</b></td>`).join('')}
+      ${CHEMICALS.map(c=>`<td style="text-align:right;font-size:10px"><b>${e(c.split(' ')[0])}</b></td>`).join('')}
         <td style="text-align:right"><b>შესრ.%</b></td>
       </tr>`;
   opArr.forEach(([name,d])=>{
@@ -837,7 +838,7 @@ function reportCard(r){
             <div class="data-item"><div class="data-key">ფილტრი</div><div class="data-val">${pd.filt==='yes'?'✅ გარეცხ.':pd.filt==='no'?'❌ არა':'—'}</div></div>
             <div class="data-item"><div class="data-key">გაჩოთქვა</div><div class="data-val">${pd.spla==='yes'?'✅ შესრ.':pd.spla==='no'?'❌ არა':'—'}</div></div>
             <div class="data-item"><div class="data-key">ცხაური</div><div class="data-val">${pd.grid==='yes'?'✅ გარეცხ.':pd.grid==='no'?'❌ არა':'—'}</div></div>
-            ${CHEMICALS.map(c=>`<div class="data-item"><div class="data-key">${e(c.split(' ')[0])}</div><div class="data-val">${getChem(pd.chems,c)} კგ</div></div>`).join('')}
+            ${CHEMICALS.map(c=>{const unit=c.match(/\(([^)]+)\)/)?.[1]||'';return`<div class="data-item"><div class="data-key">${e(c.split(' ')[0])}</div><div class="data-val">${getChem(pd.chems,c)} ${unit}</div></div>`;}).join('')}
           </div>
         </div>`;
       }).join('')}
