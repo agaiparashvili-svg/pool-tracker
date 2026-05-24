@@ -1050,12 +1050,23 @@ function getChem(chems,name){
   // 2. old slug key
   const slug=sl(name);
   if(chems[slug]!=null&&chems[slug]!==0)return Number(chems[slug]);
-  // 3. scan all keys case-insensitive / partial match
+  // 3. try all old unit variants for same chemical
+  const aliases={
+    'pH+ (ლ)':['pH+ (კგ)','pH___კგ_','pH___ლ_'],
+    'pH- (ლ)':['pH- (კგ)','pH___კგ_','pH___ლ_'],
+    'ალგეციდი (ლ)':['ალგეციდი (კგ)','ალგეციდი__კგ_','ალგეციდი__ლ_'],
+    'ქლორი ტაბლეტი (ცალი)':['ქლორი ტაბლეტი (კგ)','ქლორი_ტაბლეტი__კგ_','ქლორი_ტაბლეტი__ცალი_'],
+    'ქლორი (კგ)':['ქლორი__კგ_'],
+  };
+  for(const alt of (aliases[name]||[])){
+    if(chems[alt]!=null&&chems[alt]!==0)return Number(chems[alt]);
+  }
+  // 4. case-insensitive scan
   const nameLower=name.toLowerCase();
   for(const k of Object.keys(chems)){
     if(k.toLowerCase()===nameLower)return Number(chems[k])||0;
   }
-  // 4. zero value exact/slug (return 0 explicitly stored)
+  // 5. zero stored explicitly
   if(chems[name]!=null)return Number(chems[name]);
   if(chems[slug]!=null)return Number(chems[slug]);
   return 0;
