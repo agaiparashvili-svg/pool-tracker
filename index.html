@@ -1211,14 +1211,12 @@ window.sendTestEmail=async function(){
   }
 };
 
+// შენიშვნა: ავტომატური დღიური მეილი ახლა სერვერზე (GitHub Actions cron) იგზავნება —
+// 10:00 და 18:00-ზე, ბრაუზერის გახსნის გარეშე (იხ. scripts/ და .github/workflows/).
+// ბრაუზერის ძველი ავტო-განრიგი გათიშულია, რომ მეილი არ დუბლირდეს.
+// ქვემოთ "სატესტო მეილის" ღილაკი (sendTestEmail) კი მუშა მდგომარეობაშია.
 function startEmailScheduler(){
-  function check(){
-    const h=new Date().getHours();
-    const m=new Date().getMinutes();
-    if(SEND_HOURS.includes(h)&&m===0)sendDailyEmail();
-  }
-  setInterval(check,60000);
-  check();
+  // განზრახ ცარიელია — გაგზავნა სერვერზე ხდება.
 }
 startEmailScheduler();
 </script>

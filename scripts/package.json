@@ -1,0 +1,13 @@
+{
+  "name": "pool-tracker-daily-email",
+  "version": "1.0.0",
+  "description": "აუზების დღიური რეპორტის ავტომატური მეილი (GitHub Actions cron)",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "send": "node send-daily-report.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

@@ -1,0 +1,39 @@
+name: დღიური რეპორტის მეილი
+
+# გაშვების განრიგი — UTC დროით.
+# თბილისი = UTC+4 (მუდმივი), ამიტომ:
+#   06:00 UTC = 10:00 თბილისი (დილის ცვლა)
+#   14:00 UTC = 18:00 თბილისი (საღამოს ცვლა)
+on:
+  schedule:
+    - cron: '0 6 * * *'
+    - cron: '0 14 * * *'
+  workflow_dispatch: {}   # ხელით გაშვების საშუალება (Actions ტაბიდან)
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: კოდის წამოღება
+        uses: actions/checkout@v4
+
+      - name: Node.js დაყენება
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: დამოკიდებულებების ინსტალაცია
+        working-directory: scripts
+        run: npm install --no-audit --no-fund
+
+      - name: რეპორტის მეილის გაგზავნა
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          EMAILJS_PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
+          # არასავალდებულო override-ები (ნაგულისხმევები სკრიპტშია):
+          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
+          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
+          REPORT_EMAIL: ${{ secrets.REPORT_EMAIL }}
+        run: node send-daily-report.js
