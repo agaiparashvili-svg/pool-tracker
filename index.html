@@ -745,14 +745,20 @@ window.renderStats=function(){
   const maxChem=Math.max(...Object.values(chemTotals),0.01);
   const totalWork=Object.values(work).reduce((a,w)=>a+w.yes+w.no,0);
 
-  // summary pills
-  const totalChemKg=Object.values(chemTotals).reduce((a,b)=>a+b,0);
+  // summary pills — ლიტრი და კილოგრამი ცალკ-ცალკე ჯამდება
+  let totalChemKg=0,totalChemL=0;
+  Object.entries(chemTotals).forEach(([c,v])=>{
+    const unit=c.match(/\(([^)]+)\)/)?.[1]||'';
+    if(unit==='კგ')totalChemKg+=v;
+    else if(unit==='ლ')totalChemL+=v;
+  });
   const workDonePct=totalWork?Math.round(Object.values(work).reduce((a,w)=>a+w.yes,0)/totalWork*100):0;
 
   let html=`<div class="stats-summary">
     <div class="stat-pill"><div class="pill-val">${list.length}</div><div class="pill-lbl">📋 რეპორტი</div></div>
     <div class="stat-pill"><div class="pill-val">${totalPools}</div><div class="pill-lbl">🏊 აუზი (სულ)</div></div>
-    <div class="stat-pill"><div class="pill-val">${totalChemKg.toFixed(1)} კგ</div><div class="pill-lbl">⚗️ ქიმიკატი სულ</div></div>
+    <div class="stat-pill"><div class="pill-val">${totalChemL.toFixed(1)} ლ</div><div class="pill-lbl">⚗️ ქიმიკატი (ლ)</div></div>
+    <div class="stat-pill"><div class="pill-val">${totalChemKg.toFixed(1)} კგ</div><div class="pill-lbl">⚗️ ქიმიკატი (კგ)</div></div>
     <div class="stat-pill"><div class="pill-val">${workDonePct}%</div><div class="pill-lbl">✅ შესრულება</div></div>
     <div class="stat-pill"><div class="pill-val" style="color:${phBad?'var(--danger)':'var(--good)'}">${phBad}</div><div class="pill-lbl">⚠️ PH გადახრა</div></div>
     <div class="stat-pill"><div class="pill-val" style="color:${clBad?'var(--danger)':'var(--good)'}">${clBad}</div><div class="pill-lbl">⚠️ ქლ. გადახრა</div></div>
@@ -772,6 +778,10 @@ window.renderStats=function(){
       <div class="stats-bar-wrap"><div class="stats-bar" style="width:${pct}%"></div></div>
     </td><td class="${v===0?'stats-zero':''}">${v % 1===0?v:v.toFixed(2)} ${unit}</td></tr>`;
   });
+  html+=`<tr style="border-top:2px solid var(--border);font-weight:800">
+      <td>📦 სულ ჯამი</td>
+      <td style="white-space:nowrap">${totalChemL.toFixed(1)} ლ<br>${totalChemKg.toFixed(1)} კგ</td>
+    </tr>`;
   html+=`</table></div>`;
 
   // შესრულებული სამუშაო
@@ -1105,7 +1115,7 @@ const EMAIL_SERVICE_ID='service_uc9t7c5';
 const EMAIL_TEMPLATE_ID='template_c80oqpl';
 const EMAIL_PUBLIC_KEY='gMuchMs4-Nz5YFLch';
 const REPORT_EMAIL='a.gaiparashvili@lopotaresort.com';
-const SEND_HOURS=[10,19];
+const SEND_HOURS=[10,18];
 
 emailjs.init(EMAIL_PUBLIC_KEY);
 
@@ -1139,6 +1149,27 @@ function buildDailyHTMLTable(reports){
     html+=`</tbody></table>`;
     if(r.comment)html+=`<p style="font-family:sans-serif;font-size:13px;color:#555;margin-top:6px">💬 <b>კომენტარი:</b> ${e(r.comment)}</p>`;
   }
+  // ---- ქიმიკატების ჯამი (ლიტრი ცალკე, კილოგრამი ცალკე) ----
+  const chemTotals={};
+  CHEMICALS.forEach(c=>chemTotals[c]=0);
+  let totalChemL=0,totalChemKg=0;
+  for(const r of todayReps){
+    for(const pd of Object.values(r.pools||{})){
+      CHEMICALS.forEach(c=>{chemTotals[c]+=getChem(pd.chems,c);});
+    }
+  }
+  Object.entries(chemTotals).forEach(([c,v])=>{
+    const unit=c.match(/\(([^)]+)\)/)?.[1]||'';
+    if(unit==='კგ')totalChemKg+=v;
+    else if(unit==='ლ')totalChemL+=v;
+  });
+  html+=`<h3 style="font-family:sans-serif;margin-top:24px">⚗️ ქიმიკატების ჯამი (დღე)</h3>
+    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:sans-serif;font-size:13px">
+      <thead style="background:#0077b6;color:white"><tr><th>ქიმიკატი</th><th>ჯამი</th></tr></thead><tbody>
+      ${CHEMICALS.map(c=>{const unit=c.match(/\(([^)]+)\)/)?.[1]||'';const v=chemTotals[c];return`<tr><td>${e(c)}</td><td style="text-align:right">${v%1===0?v:v.toFixed(2)} ${unit}</td></tr>`;}).join('')}
+      <tr style="font-weight:bold;background:#e0f2fe"><td>📦 სულ (ლიტრი)</td><td style="text-align:right">${totalChemL.toFixed(1)} ლ</td></tr>
+      <tr style="font-weight:bold;background:#e0f2fe"><td>📦 სულ (კილოგრამი)</td><td style="text-align:right">${totalChemKg.toFixed(1)} კგ</td></tr>
+      </tbody></table>`;
   return html;
 }
 
@@ -1147,7 +1178,7 @@ async function sendDailyEmail(){
   const storageKey=`email_sent_${today}_${new Date().getHours()}`;
   if(localStorage.getItem(storageKey))return;
   const html=buildDailyHTMLTable(allReports);
-  const shift=new Date().getHours()<15?'🌅 დილა (10:00)':'🌙 საღამო (19:00)';
+  const shift=new Date().getHours()<15?'🌅 დილა (10:00)':'🌙 საღამო (18:00)';
   try{
     await emailjs.send(EMAIL_SERVICE_ID,EMAIL_TEMPLATE_ID,{
       to_email:REPORT_EMAIL,
