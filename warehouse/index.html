@@ -226,6 +226,22 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
       <div id="arrivals-list"></div>
     </div>
 
+    <!-- users (admin only) -->
+    <div class="section" id="sec-users">
+      <div class="section-header"><h2>👥 მომხმარებლები</h2></div>
+      <div class="hint">ახალი თანამშრომელი თვითონ რეგისტრირდება შესვლის ეკრანზე („რეგისტრაცია" ჩანართი). შემდეგ აქ დაუმტკიცეთ როლი — სანამ „⏳ მოლოდინში"-ა, აპში ვერ შევა.</div>
+      <div class="toolbar">
+        <input type="search" id="users-search" placeholder="🔎 ძებნა (სახელი/ელ-ფოსტა)…" oninput="renderUsers()">
+        <select id="users-filter" onchange="renderUsers()">
+          <option value="all">ყველა</option>
+          <option value="pending">⏳ მოლოდინში</option>
+          <option value="operator">ოპერატორი</option>
+          <option value="admin">ადმინი</option>
+        </select>
+      </div>
+      <div id="users-list"></div>
+    </div>
+
   </div>
   <button class="fab" id="fab" onclick="onFab()">＋</button>
 </div>
@@ -319,7 +335,7 @@ const auth=getAuth(fireApp);
 const db=getFirestore(fireApp);
 
 let currentUser=null,currentRole=null,currentName='';
-let products=[],orders=[],moves=[];
+let products=[],orders=[],moves=[],allUsers=[];
 let unsub=[];
 
 const $=id=>document.getElementById(id);
@@ -392,6 +408,7 @@ function buildNav(role){
   const nav=$('main-nav');nav.innerHTML='';
   if(role==='pending'){showSection('sec-pending');$('fab').style.display='none';return;}
   const items=[['sec-dash','📊 მთავარი'],['sec-stock','📦 მარაგი'],['sec-orders','🛒 შეკვეთები'],['sec-arrivals','📥 ჩამოსვლა']];
+  if(role==='admin')items.push(['sec-users','👥 მომხმარებლები']);
   items.forEach(([id,label],i)=>{
     const el=document.createElement('div');
     el.className='nav-item'+(i===0?' active':'');
@@ -427,6 +444,12 @@ function startListeners(){
     moves=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderArrivals();renderDash();
   },e=>{}));
+  if(currentRole==='admin'){
+    unsub.push(onSnapshot(collection(db,'pool_users'),snap=>{
+      allUsers=snap.docs.map(d=>({id:d.id,...d.data()}));
+      renderUsers();
+    },e=>{}));
+  }
 }
 
 function productById(id){return products.find(p=>p.id===id);}
@@ -527,6 +550,49 @@ window.renderArrivals=function(){
 };
 
 function emptyBox(ico,txt){return `<div class="empty"><span class="ico">${ico}</span><p>${txt}</p></div>`;}
+
+// ---------- USERS (admin) ----------
+window.renderUsers=function(){
+  if(!$('users-list'))return;
+  const term=($('users-search').value||'').trim().toLowerCase();
+  const filter=$('users-filter').value;
+  let list=allUsers.slice().sort((a,b)=>{
+    const rank={pending:0,operator:1,admin:2};return (rank[a.role]??9)-(rank[b.role]??9)||(a.name||'').localeCompare(b.name||'');
+  });
+  if(term)list=list.filter(u=>(u.name||'').toLowerCase().includes(term)||(u.email||'').toLowerCase().includes(term));
+  if(filter!=='all')list=list.filter(u=>u.role===filter);
+  if(!list.length){$('users-list').innerHTML=emptyBox('👥','მომხმარებელი არ მოიძებნა.');return;}
+  const rlBadge={admin:'<span class="badge received">ადმინი</span>',operator:'<span class="badge ordered">ოპერატორი</span>',pending:'<span class="badge low">⏳ მოლოდინში</span>'};
+  const me=currentUser?currentUser.uid:'';
+  $('users-list').innerHTML=list.map(u=>{
+    const isMe=u.id===me;
+    return `<div class="list-row ${u.role==='pending'?'low':''}">
+      <div class="row-top">
+        <div><div class="row-name">${esc(u.name||'(უსახელო)')}${isMe?' <span class="muted">(თქვენ)</span>':''}</div>
+        <div class="row-sub">${esc(u.email||'')}</div>
+        <div class="row-sub">დარეგისტრ.: ${u.createdAt?fmtDate(u.createdAt):'—'}</div></div>
+        <div>${rlBadge[u.role]||esc(u.role||'')}</div>
+      </div>
+      ${isMe?'':`<div class="row-actions">
+        <select onchange="setRole('${u.id}',this.value)" style="width:auto;flex:0 1 auto;font-size:13px;padding:8px 10px">
+          <option value="pending" ${u.role==='pending'?'selected':''}>⏳ მოლოდინში</option>
+          <option value="operator" ${u.role==='operator'?'selected':''}>👷 ოპერატორი</option>
+          <option value="admin" ${u.role==='admin'?'selected':''}>👑 ადმინი</option>
+        </select>
+        <button class="btn btn-danger btn-sm" onclick="delUser('${u.id}','${esc((u.name||u.email||'').replace(/'/g,''))}')">🗑</button>
+      </div>`}
+    </div>`;
+  }).join('');
+};
+window.setRole=async function(uid,role){
+  try{await updateDoc(doc(db,'pool_users',uid),{role});toast('✓ როლი განახლდა','good');}
+  catch(e){toast('შეცდომა: '+e.message,'bad');}
+};
+window.delUser=async function(id,name){
+  if(!confirm(`წავშალო მომხმარებელი „${name}"?\n(ანგარიში წაიშლება სიიდან; შესვლა ვეღარ შეძლებს დადასტურებამდე.)`))return;
+  try{await deleteDoc(doc(db,'pool_users',id));toast('წაიშალა','warn');}
+  catch(e){toast('შეცდომა: '+e.message,'bad');}
+};
 
 // ---------- MODAL HELPERS ----------
 window.closeModal=id=>$(id).classList.remove('show');
