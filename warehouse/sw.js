@@ -1,6 +1,7 @@
 // Service worker for the warehouse PWA.
-// App shell is cached for offline launch; Firebase/network requests pass through.
-const CACHE = 'warehouse-v1';
+// HTML/navigation: network-first (so deploys show up immediately when online).
+// Static assets (icons): cache-first. Firebase/CDN: passthrough.
+const CACHE = 'warehouse-v2';
 const SHELL = [
   './',
   './index.html',
@@ -26,20 +27,36 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  // Only handle same-origin app-shell GETs; let Firebase/CDN/network go to the network.
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) return; // let Firebase/CDN go to the network
 
+  const isHTML = req.mode === 'navigate' ||
+    (req.headers.get('accept') || '').includes('text/html') ||
+    url.pathname.endsWith('.html') || url.pathname.endsWith('/');
+
+  if (isHTML) {
+    // network-first: always try the latest, fall back to cache when offline
+    e.respondWith(
+      fetch(req).then((res) => {
+        if (res && res.status === 200) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      }).catch(() => caches.match(req).then((c) => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // static assets: cache-first with background refresh
   e.respondWith(
     caches.match(req).then((cached) => {
-      const fetcher = fetch(req)
-        .then((res) => {
-          if (res && res.status === 200 && res.type === 'basic') {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
+      const fetcher = fetch(req).then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      }).catch(() => cached);
       return cached || fetcher;
     })
   );

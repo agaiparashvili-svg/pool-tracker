@@ -238,6 +238,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
       <div class="section-header"><h2>📥 ჩამოსული ინვენტარი</h2></div>
       <div class="hint">აქ ჩანს ყველა ნივთი, რომელიც „🟢 ჩამოვიდა"-დ მოინიშნა. ჩამოსვლისას ის ავტომატურად ემატება „📦 მარაგს".</div>
       <div class="toolbar">
+        <button class="btn btn-good btn-sm" id="btn-sync" onclick="reconcileStock()">🔄 მარაგში სინქი</button>
         <input type="date" id="arr-from" onchange="renderArrivals()">
         <input type="date" id="arr-to" onchange="renderArrivals()">
       </div>
@@ -466,6 +467,7 @@ function buildNav(role){
     nav.appendChild(el);
   });
   const ib=$('btn-import');if(ib)ib.style.display=canEditOrders()?'':'none';
+  const sb=$('btn-sync');if(sb)sb.style.display=canEditOrders()?'':'none';
   showSection('sec-dash');updateFab('sec-dash');
   startListeners();
 }
@@ -596,13 +598,16 @@ window.renderOrders=function(){
   }).join('');
 };
 // find an existing product matching the order item, or create one
-async function ensureProductForOrder(o){
+async function ensureProductForOrder(o,cache){
   if(o.productId){const p=productById(o.productId);if(p)return p;}
-  const nm=(orderName(o)||'').trim().toLowerCase();
-  const exist=products.find(x=>(x.name||'').trim().toLowerCase()===nm);
-  if(exist)return exist;
+  const key=(orderName(o)||'').trim().toLowerCase();
+  if(cache&&cache.has(key))return cache.get(key);
+  const exist=products.find(x=>(x.name||'').trim().toLowerCase()===key);
+  if(exist){if(cache)cache.set(key,exist);return exist;}
   const ref=await addDoc(collection(db,'wh_products'),{name:orderName(o),unit:o.unit||'',category:'ჩამოსული',minStock:0,stock:0,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),createdBy:currentName});
-  return {id:ref.id,name:orderName(o),unit:o.unit||'',stock:0,minStock:0};
+  const np={id:ref.id,name:orderName(o),unit:o.unit||'',stock:0,minStock:0};
+  if(cache)cache.set(key,np);
+  return np;
 }
 window.setOrderStatus=async function(id,status){
   const o=orders.find(x=>x.id===id);if(!o)return;
@@ -626,6 +631,30 @@ window.setOrderStatus=async function(id,status){
     await updateDoc(doc(db,'wh_orders',id),data);
     toast('სტატუსი: '+ST[status].e+' '+ST[status].l+(delta>0?' · მარაგში დაემატა':(delta<0?' · მარაგიდან მოაკლდა':'')),'good');
   }catch(e){toast('შეცდომა: '+e.message,'bad');}
+};
+// one-off reconcile: push every arrived order into stock (idempotent via appliedQty)
+window.reconcileStock=async function(){
+  const pend=orders.filter(o=>{const t=ostat(o)==='arrived'?num(o.qty):0;return t-num(o.appliedQty||0)!==0;});
+  if(!pend.length){toast('ყველაფერი უკვე მარაგშია ✓','good');return;}
+  if(!confirm(`${pend.length} ჩამოსული ნივთი დაემატება „მარაგში". გავაგრძელო?`))return;
+  const cache=new Map();let n=0;
+  for(const o of pend){
+    try{
+      const target=ostat(o)==='arrived'?num(o.qty):0;
+      const delta=target-num(o.appliedQty||0);
+      if(delta===0)continue;
+      const p=await ensureProductForOrder(o,cache);
+      // keep local cache stock in sync so repeated names accumulate correctly
+      p.stock=num(p.stock)+delta;
+      await updateDoc(doc(db,'wh_products',p.id),{stock:increment(delta),updatedAt:serverTimestamp()});
+      await addDoc(collection(db,'wh_moves'),{productId:p.id,productName:p.name,unit:p.unit||o.unit||'',
+        type:delta>0?'in':'out',qty:Math.abs(delta),source:'order',orderId:o.id,note:'ჩამოსვლის სინქი',
+        byUid:currentUser.uid,byName:currentName,createdAt:serverTimestamp()});
+      await updateDoc(doc(db,'wh_orders',o.id),{appliedQty:target,productId:p.id});
+      n++;
+    }catch(e){}
+  }
+  toast('✓ მარაგში დაემატა '+n+' ნივთი','good');
 };
 
 // ---------- ARRIVED INVENTORY (ჩამოსული ინვენტარი) ----------
