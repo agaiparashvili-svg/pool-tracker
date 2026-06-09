@@ -57,7 +57,14 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .nav::-webkit-scrollbar{display:none;}
 .nav-item{padding:14px 14px;cursor:pointer;color:var(--text3);white-space:nowrap;font-size:13px;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s;font-weight:600;}
 .nav-item.active{color:var(--accent);border-color:var(--accent);}
-.content{padding:20px 14px 90px;max-width:760px;margin:0 auto;width:100%;}
+.content{padding:20px 16px 90px;max-width:1240px;margin:0 auto;width:100%;}
+/* desktop: use full width — lists flow into multiple columns so no empty space */
+@media(min-width:760px){
+  #stock-list,#orders-list,#arrivals-list,#issues-list,#report-list{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start;
+  }
+  #stock-list>.list-row,#orders-list>.list-row,#arrivals-list>.list-row,#issues-list>.list-row,#report-list>.list-row{margin-bottom:0;}
+}
 .section{display:none;animation:fadeIn .25s ease;}
 .section.active{display:block;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -583,7 +590,7 @@ window.renderStock=function(){
         <div class="row-stock"><div class="v ${st==='out'?'bad':(st==='low'?'warn':'')}">${fmtN(num(p.stock))}</div><div class="u">${esc(p.unit||'')}</div></div>
       </div>
       <div class="row-actions">
-        <button class="btn btn-good btn-sm" onclick="openMove('${p.id}','in')">➕ ჩამოსვლა</button>
+        <button class="btn btn-good btn-sm" onclick="openMove('${p.id}','in')">➕ დამატება</button>
         <button class="btn btn-warn btn-sm" onclick="openMove('${p.id}','out')">➖ გაცემა</button>
         <button class="btn btn-light btn-sm" onclick="openProduct('${p.id}')">✏️</button>
         ${adm?`<button class="btn btn-danger btn-sm" onclick="delProduct('${p.id}')">🗑</button>`:''}
@@ -1022,9 +1029,9 @@ window.exportOrders=function(){
 window.openMove=function(pid,type){
   const p=productById(pid);if(!p)return;
   $('mm-id').value=pid;$('mm-type').value=type;
-  $('mm-title').textContent=type==='in'?'➕ ჩამოსვლა (მიღება)':'➖ გაცემა (ხარჯვა)';
+  $('mm-title').textContent=type==='in'?'➕ მარაგში დამატება':'➖ გაცემა (ხარჯვა)';
   $('mm-prod').textContent=p.name+' · მარაგი: '+fmtN(num(p.stock))+' '+(p.unit||'');
-  $('mm-qty-lbl').textContent=type==='in'?'ჩამოსული რაოდენობა':'გასაცემი რაოდენობა';
+  $('mm-qty-lbl').textContent=type==='in'?'დასამატებელი რაოდენობა':'გასაცემი რაოდენობა';
   $('mm-note-lbl').textContent=type==='in'?'შენიშვნა':'🎯 რაში/ვის დაეხარჯა';
   $('mm-note').placeholder=type==='in'?'არასავალდ.':'მაგ. აუზის შეკეთება, ბარი…';
   $('mm-qty').value='';$('mm-note').value='';$('mm-err').textContent='';
@@ -1042,7 +1049,7 @@ window.saveMove=async function(){
     await addDoc(collection(db,'wh_moves'),{productId:pid,productName:p.name,unit:p.unit||'',type,qty,
       balanceAfter:num(p.stock)+delta,source:'manual',note:$('mm-note').value.trim(),
       byUid:currentUser.uid,byName:currentName,createdAt:serverTimestamp()});
-    toast(type==='in'?'ჩამოსვლა დაფიქსირდა ✓':'გაცემა დაფიქსირდა ✓','good');
+    toast(type==='in'?'მარაგში დაემატა ✓':'გაცემა დაფიქსირდა ✓','good');
     closeModal('m-move');
   }catch(e){$('mm-err').textContent='შეცდომა: '+e.message;}
 };
