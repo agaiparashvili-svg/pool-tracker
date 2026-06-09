@@ -257,6 +257,20 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
       <div id="issues-list"></div>
     </div>
 
+    <!-- report -->
+    <div class="section" id="sec-report">
+      <div class="section-header"><h2>📈 რეპორტი</h2></div>
+      <div class="hint">თითო პროდუქტი ცალცალკე — რამდენი შეუკვეთეს, ჩამოვიდა, გაიცა და მიმდინარე ნაშთი. დააჭირე ნივთს დეტალებისთვის. ქვემოთ — გაერთიანებული ჯამი.</div>
+      <div class="toolbar">
+        <input type="search" id="rep-search" placeholder="🔎 ძებნა…" oninput="renderReport()">
+        <input type="date" id="rep-from" onchange="renderReport()">
+        <input type="date" id="rep-to" onchange="renderReport()">
+        <button class="btn btn-light btn-sm" onclick="exportReport()">📥 ექსპორტი</button>
+      </div>
+      <div class="stats-grid" id="rep-stats"></div>
+      <div id="report-list"></div>
+    </div>
+
     <!-- users (admin only) -->
     <div class="section" id="sec-users">
       <div class="section-header"><h2>👥 მომხმარებლები</h2></div>
@@ -458,7 +472,7 @@ function launchApp(d){
 function buildNav(role){
   const nav=$('main-nav');nav.innerHTML='';
   if(role==='pending'){showSection('sec-pending');$('fab').style.display='none';return;}
-  const items=[['sec-dash','📊 მთავარი'],['sec-stock','📦 მარაგი'],['sec-orders','🛒 შეკვეთები'],['sec-arrivals','📥 ჩამოსული ინვენტარი'],['sec-issues','📤 გაცემები']];
+  const items=[['sec-dash','📊 მთავარი'],['sec-stock','📦 მარაგი'],['sec-orders','🛒 შეკვეთები'],['sec-arrivals','📥 ჩამოსული ინვენტარი'],['sec-issues','📤 გაცემები'],['sec-report','📈 რეპორტი']];
   if(role==='admin')items.push(['sec-users','👥 მომხმარებლები']);
   items.forEach(([id,label],i)=>{
     const el=document.createElement('div');
@@ -487,15 +501,15 @@ window.onFab=function(){const ctx=$('fab').dataset.ctx;if(ctx==='sec-stock')open
 function startListeners(){
   unsub.push(onSnapshot(query(collection(db,'wh_products'),orderBy('name')),snap=>{
     products=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderStock();renderDash();fillProductSelect();
+    renderStock();renderDash();fillProductSelect();renderReport();
   },e=>toast('მარაგის ჩატვირთვა ვერ მოხერხდა','bad')));
   unsub.push(onSnapshot(query(collection(db,'wh_orders'),orderBy('createdAt','desc')),snap=>{
     orders=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderOrders();renderDash();renderArrivals();
+    renderOrders();renderDash();renderArrivals();renderReport();
   },e=>{}));
   unsub.push(onSnapshot(query(collection(db,'wh_moves'),orderBy('createdAt','desc')),snap=>{
     moves=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderIssues();renderDash();
+    renderIssues();renderDash();renderReport();
   },e=>{}));
   if(currentRole==='admin'){
     unsub.push(onSnapshot(collection(db,'pool_users'),snap=>{
@@ -704,6 +718,78 @@ window.renderIssues=function(){
         <div class="row-sub">👤 ${esc(m.byName||'')} · ${fmtDateTime(m.createdAt)}</div></div>
         <div class="row-stock"><div class="v" style="color:var(--bad)">−${fmtN(num(m.qty))}</div><div class="u">${esc(m.unit||'')}</div></div>
       </div></div>`).join('');
+};
+
+// ---------- REPORT (per product + combined) ----------
+function repInRange(ts){
+  const from=$('rep-from')?$('rep-from').value:'',to=$('rep-to')?$('rep-to').value:'';
+  if(!from&&!to)return true;
+  const d=ts&&ts.toDate?ts.toDate():(ts?new Date(ts):null);
+  if(!d||isNaN(d))return false;
+  if(from&&d<new Date(from+'T00:00:00'))return false;
+  if(to&&d>new Date(to+'T23:59:59'))return false;
+  return true;
+}
+function buildReport(){
+  const map=new Map();
+  const g=(name,unit)=>{const k=(name||'').trim().toLowerCase()||'—';
+    if(!map.has(k))map.set(k,{name:name||'—',unit:unit||'',ordered:0,arrived:0,issued:0,stock:0,hasStock:false,orders:[],issues:[]});
+    const e=map.get(k);if(!e.unit&&unit)e.unit=unit;return e;};
+  products.forEach(p=>{const e=g(p.name,p.unit);e.stock=num(p.stock);e.hasStock=true;});
+  orders.forEach(o=>{if(!repInRange(o.orderDate))return;const e=g(orderName(o),o.unit);e.ordered+=num(o.qty);if(ostat(o)==='arrived')e.arrived+=num(o.qty);e.orders.push(o);});
+  moves.forEach(m=>{if(m.type!=='out'||!repInRange(m.createdAt))return;const e=g(m.productName,m.unit);e.issued+=num(m.qty);e.issues.push(m);});
+  return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name,'ka'));
+}
+window.renderReport=function(){
+  if(!$('report-list'))return;
+  let rows=buildReport();
+  const term=($('rep-search')?$('rep-search').value:'').trim().toLowerCase();
+  if(term)rows=rows.filter(e=>e.name.toLowerCase().includes(term));
+  const tOrdered=rows.reduce((s,e)=>s+e.ordered,0),tArr=rows.reduce((s,e)=>s+e.arrived,0),tIss=rows.reduce((s,e)=>s+e.issued,0);
+  $('rep-stats').innerHTML=`
+    <div class="stat-card"><div class="num">${rows.length}</div><div class="lbl">პროდუქტი</div></div>
+    <div class="stat-card"><div class="num">${fmtN(tOrdered)}</div><div class="lbl">სულ შეკვეთილი</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--good)">${fmtN(tArr)}</div><div class="lbl">სულ ჩამოსული</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--bad)">${fmtN(tIss)}</div><div class="lbl">სულ გაცემული</div></div>`;
+  if(!rows.length){$('report-list').innerHTML=emptyBox('📈','მონაცემი არ მოიძებნა.');return;}
+  $('report-list').innerHTML=rows.map(e=>{
+    const ordDet=e.orders.length?e.orders.slice().sort((a,b)=>dnum(b.orderDate)-dnum(a.orderDate)).map(o=>{const s=ostat(o);
+      return `<div class="row-sub">🛒 ${o.orderDate?fmtDate(o.orderDate):'—'} · ${fmtN(num(o.qty))} ${esc(e.unit)} · <span class="badge ${s}">${ST[s].e} ${ST[s].l}</span></div>`;}).join(''):'';
+    const issDet=e.issues.length?e.issues.slice().sort((a,b)=>dnum(b.createdAt)-dnum(a.createdAt)).map(m=>
+      `<div class="row-sub">📤 ${fmtDateTime(m.createdAt)} · −${fmtN(num(m.qty))} ${esc(e.unit)}${m.note?' · 🎯 '+esc(m.note):''}${m.byName?' · '+esc(m.byName):''}</div>`).join(''):'';
+    return `<details class="list-row">
+      <summary style="cursor:pointer">
+        <div class="row-top">
+          <div><div class="row-name">${esc(e.name)}</div>
+          <div class="row-sub">📦 ნაშთი: <b>${fmtN(e.stock)}</b> ${esc(e.unit)}</div></div>
+          <div style="text-align:right;font-size:12px;line-height:1.7;flex-shrink:0">
+            <div>🛒 შეკვ. <b>${fmtN(e.ordered)}</b></div>
+            <div style="color:var(--good)">🟢 ჩამ. <b>${fmtN(e.arrived)}</b></div>
+            <div style="color:var(--bad)">📤 გაც. <b>${fmtN(e.issued)}</b></div>
+          </div>
+        </div>
+      </summary>
+      <div style="margin-top:10px;border-top:1px solid var(--surface3);padding-top:10px">
+        ${ordDet||issDet?ordDet+issDet:'<div class="row-sub muted">დეტალები არ არის</div>'}
+      </div>
+    </details>`;
+  }).join('');
+};
+window.exportReport=function(){
+  if(!window.XLSX){toast('Excel-ის ბიბლიოთეკა იტვირთება','warn');return;}
+  let rows=buildReport();
+  const term=($('rep-search')?$('rep-search').value:'').trim().toLowerCase();
+  if(term)rows=rows.filter(e=>e.name.toLowerCase().includes(term));
+  if(!rows.length){toast('მონაცემი არ არის','warn');return;}
+  const head=['№','პროდუქტი','ერთეული','შეკვეთილი','ჩამოსული','გაცემული','ნაშთი'];
+  const aoa=[head];
+  rows.forEach((e,i)=>aoa.push([i+1,e.name,e.unit,e.ordered,e.arrived,e.issued,e.stock]));
+  aoa.push(['','ჯამი','',rows.reduce((s,e)=>s+e.ordered,0),rows.reduce((s,e)=>s+e.arrived,0),rows.reduce((s,e)=>s+e.issued,0),rows.reduce((s,e)=>s+e.stock,0)]);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:5},{wch:34},{wch:9},{wch:12},{wch:12},{wch:12},{wch:10}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'რეპორტი');
+  XLSX.writeFile(wb,'პროდუქტების_რეპორტი_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('ფაილი ჩამოიტვირთა ✓','good');
 };
 
 function emptyBox(ico,txt){return `<div class="empty"><span class="ico">${ico}</span><p>${txt}</p></div>`;}
