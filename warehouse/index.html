@@ -233,10 +233,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
       <div id="orders-list"></div>
     </div>
 
-    <!-- arrivals / receipts -->
+    <!-- arrived inventory -->
     <div class="section" id="sec-arrivals">
-      <div class="section-header"><h2>📥 ჩამოსვლა</h2></div>
-      <div class="hint">აქ ჩანს რა და როდის ჩამოვიდა საწყობში — შეკვეთებიდან თუ პირდაპირი მიღებით.</div>
+      <div class="section-header"><h2>📥 ჩამოსული ინვენტარი</h2></div>
+      <div class="hint">აქ ჩანს ყველა ნივთი, რომელიც „🟢 ჩამოვიდა"-დ მოინიშნა. ჩამოსვლისას ის ავტომატურად ემატება „📦 მარაგს".</div>
       <div class="toolbar">
         <input type="date" id="arr-from" onchange="renderArrivals()">
         <input type="date" id="arr-to" onchange="renderArrivals()">
@@ -445,7 +445,7 @@ function launchApp(d){
 function buildNav(role){
   const nav=$('main-nav');nav.innerHTML='';
   if(role==='pending'){showSection('sec-pending');$('fab').style.display='none';return;}
-  const items=[['sec-dash','📊 მთავარი'],['sec-stock','📦 მარაგი'],['sec-orders','🛒 შეკვეთები'],['sec-arrivals','📥 ჩამოსვლა']];
+  const items=[['sec-dash','📊 მთავარი'],['sec-stock','📦 მარაგი'],['sec-orders','🛒 შეკვეთები'],['sec-arrivals','📥 ჩამოსული ინვენტარი']];
   if(role==='admin')items.push(['sec-users','👥 მომხმარებლები']);
   items.forEach(([id,label],i)=>{
     const el=document.createElement('div');
@@ -477,7 +477,7 @@ function startListeners(){
   },e=>toast('მარაგის ჩატვირთვა ვერ მოხერხდა','bad')));
   unsub.push(onSnapshot(query(collection(db,'wh_orders'),orderBy('createdAt','desc')),snap=>{
     orders=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderOrders();renderDash();
+    renderOrders();renderDash();renderArrivals();
   },e=>{}));
   unsub.push(onSnapshot(query(collection(db,'wh_moves'),orderBy('createdAt','desc')),snap=>{
     moves=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -583,34 +583,63 @@ window.renderOrders=function(){
       </div></div>`;
   }).join('');
 };
+// find an existing product matching the order item, or create one
+async function ensureProductForOrder(o){
+  if(o.productId){const p=productById(o.productId);if(p)return p;}
+  const nm=(orderName(o)||'').trim().toLowerCase();
+  const exist=products.find(x=>(x.name||'').trim().toLowerCase()===nm);
+  if(exist)return exist;
+  const ref=await addDoc(collection(db,'wh_products'),{name:orderName(o),unit:o.unit||'',category:'ჩამოსული',minStock:0,stock:0,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),createdBy:currentName});
+  return {id:ref.id,name:orderName(o),unit:o.unit||'',stock:0,minStock:0};
+}
 window.setOrderStatus=async function(id,status){
   const o=orders.find(x=>x.id===id);if(!o)return;
-  const data={status,statusBy:currentName,statusAt:serverTimestamp()};
-  if((status==='arrived'||status==='partial')&&!o.arrivedAt)data.arrivedAt=serverTimestamp();
-  try{await updateDoc(doc(db,'wh_orders',id),data);toast('სტატუსი: '+ST[status].e+' '+ST[status].l,'good');}
-  catch(e){toast('შეცდომა: '+e.message,'bad');}
+  try{
+    // arrived -> reflect full qty in stock; any other status -> remove from stock. Idempotent via appliedQty.
+    const target=status==='arrived'?num(o.qty):0;
+    const applied=num(o.appliedQty||0);
+    const delta=target-applied;
+    let productId=o.productId||null;
+    if(delta!==0){
+      const p=await ensureProductForOrder(o);productId=p.id;
+      await updateDoc(doc(db,'wh_products',p.id),{stock:increment(delta),updatedAt:serverTimestamp()});
+      await addDoc(collection(db,'wh_moves'),{productId:p.id,productName:p.name,unit:p.unit||o.unit||'',
+        type:delta>0?'in':'out',qty:Math.abs(delta),source:'order',orderId:id,
+        note:delta>0?'შეკვეთა ჩამოვიდა':'სტატუსი შეიცვალა',
+        byUid:currentUser.uid,byName:currentName,createdAt:serverTimestamp()});
+    }
+    const data={status,appliedQty:target,statusBy:currentName,statusAt:serverTimestamp()};
+    if(productId)data.productId=productId;
+    if((status==='arrived'||status==='partial')&&!o.arrivedAt)data.arrivedAt=serverTimestamp();
+    await updateDoc(doc(db,'wh_orders',id),data);
+    toast('სტატუსი: '+ST[status].e+' '+ST[status].l+(delta>0?' · მარაგში დაემატა':(delta<0?' · მარაგიდან მოაკლდა':'')),'good');
+  }catch(e){toast('შეცდომა: '+e.message,'bad');}
 };
 
-// ---------- ARRIVALS ----------
+// ---------- ARRIVED INVENTORY (ჩამოსული ინვენტარი) ----------
 window.renderArrivals=function(){
   if(!$('arrivals-list'))return;
   const from=$('arr-from').value,to=$('arr-to').value;
-  let list=moves.filter(m=>m.type==='in');
+  const adate=o=>(o.arrivedAt&&o.arrivedAt.toDate)?o.arrivedAt.toDate():(o.orderDate&&o.orderDate.toDate?o.orderDate.toDate():(o.orderDate?new Date(o.orderDate):null));
+  let list=orders.filter(o=>{const s=ostat(o);return s==='arrived'||s==='partial';});
   if(from||to){
-    list=list.filter(m=>{const d=m.createdAt&&m.createdAt.toDate?m.createdAt.toDate():null;if(!d)return false;
+    list=list.filter(o=>{const d=adate(o);if(!d||isNaN(d))return false;
       if(from&&d<new Date(from+'T00:00:00'))return false;
       if(to&&d>new Date(to+'T23:59:59'))return false;return true;});
   }
-  if(!list.length){$('arrivals-list').innerHTML=emptyBox('📥','ჩამოსვლა არ მოიძებნა.');return;}
-  $('arrivals-list').innerHTML=list.map(m=>`
-    <div class="list-row">
+  list.sort((a,b)=>dnum(b.arrivedAt||b.orderDate)-dnum(a.arrivedAt||a.orderDate));
+  if(!list.length){$('arrivals-list').innerHTML=emptyBox('📥','ჩამოსული ინვენტარი არ მოიძებნა.');return;}
+  $('arrivals-list').innerHTML=list.map(o=>{
+    const st=ostat(o);const d=adate(o);
+    return `<div class="list-row ${st}">
       <div class="row-top">
-        <div><div class="row-name">${esc(m.productName)}</div>
-        <div class="row-sub">${m.source==='order'?'🛒 შეკვეთიდან':'✋ პირდაპირი მიღება'} · ${esc(m.byName||'')}</div>
-        ${m.note?'<div class="row-sub">📝 '+esc(m.note)+'</div>':''}
-        <div class="row-sub">${fmtDateTime(m.createdAt)}</div></div>
-        <div class="row-stock"><div class="v" style="color:var(--good)">+${fmtN(num(m.qty))}</div><div class="u">${esc(m.unit||'')}</div></div>
-      </div></div>`).join('');
+        <div><div class="row-name">${esc(orderName(o))}</div>
+        <div class="row-sub"><span class="badge ${st}">${ST[st].e} ${ST[st].l}</span>${o.department?' · 🏢 '+esc(o.department):''}</div>
+        ${o.sourceFile?'<div class="row-sub">📄 '+esc(o.sourceFile)+'</div>':''}
+        <div class="row-sub">📅 ${d&&!isNaN(d)?fmtDate(d):'—'}${o.statusBy?' · '+esc(o.statusBy):''}</div></div>
+        <div class="row-stock"><div class="v" style="color:var(--good)">+${fmtN(num(o.qty))}</div><div class="u">${esc(o.unit||'')}</div></div>
+      </div></div>`;
+  }).join('');
 };
 
 function emptyBox(ico,txt){return `<div class="empty"><span class="ico">${ico}</span><p>${txt}</p></div>`;}
