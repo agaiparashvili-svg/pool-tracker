@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// საწყობის + აუზების აპის Firestore წესები.
+// გამოყენება: Firebase Console → Firestore Database → Rules → ჩასვი ეს მთლიანად → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function myRole() {
+      return get(/databases/$(database)/documents/pool_users/$(request.auth.uid)).data.role;
+    }
+    function approved() {
+      return signedIn() && myRole() in ['admin', 'orderer', 'receiver', 'operator'];
+    }
+    function isAdmin() {
+      return signedIn() && myRole() == 'admin';
+    }
+
+    // მომხმარებლები: ნებისმიერ შესულს შეუძლია წაკითხვა (როლის შემოწმება, სია);
+    // რეგისტრაციისას მომხმარებელი ქმნის თავის ჩანაწერს; სხვებს მართავს ადმინი.
+    match /pool_users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // აუზების რეპორტები (არსებული აპი)
+    match /pool_reports/{id} {
+      allow read, write: if signedIn();
+    }
+
+    // საწყობი — მხოლოდ დადასტურებული მომხმარებლები
+    match /wh_products/{id} { allow read, write: if approved(); }
+    match /wh_orders/{id}   { allow read, write: if approved(); }
+    match /wh_moves/{id}    { allow read, write: if approved(); }
+  }
+}
