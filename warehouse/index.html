@@ -89,6 +89,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .badge.canceled{background:#eee;color:#999;}
 .badge.low{background:var(--warn-dim);color:var(--warn);}
 .badge.out{background:var(--bad-dim);color:var(--bad);}
+.badge.arrived{background:var(--good-dim);color:var(--good);}
+.badge.transit{background:rgba(217,119,6,.14);color:#b45309;}
+.badge.partial{background:#ffe6cc;color:#9c5000;}
+.badge.notarrived{background:var(--bad-dim);color:var(--bad);}
+.status-sel{width:auto;flex:0 1 auto;font-size:13px;padding:7px 9px;border-radius:10px;font-weight:700;}
+.status-sel.arrived{border-color:var(--good);color:var(--good);background:var(--good-dim);}
+.status-sel.transit{border-color:#d97706;color:#b45309;background:rgba(217,119,6,.1);}
+.status-sel.partial{border-color:#ea8a3a;color:#9c5000;background:#ffe6cc;}
+.status-sel.notarrived{border-color:var(--bad);color:var(--bad);background:var(--bad-dim);}
 .empty{text-align:center;padding:46px 20px;color:var(--text3);}
 .empty .ico{font-size:46px;display:block;margin-bottom:12px;opacity:.5;}
 .empty p{font-size:14px;font-weight:600;}
@@ -179,12 +188,12 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
       <div class="section-header"><h2>📊 მთავარი</h2></div>
       <div class="stats-grid" id="dash-stats"></div>
       <div class="card">
-        <h3 style="font-size:15px;font-weight:800;margin-bottom:12px;color:var(--warn)">⚠️ დაბალი მარაგი</h3>
-        <div id="dash-low"></div>
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:12px;color:var(--bad)">⏳ ჩამოუსვლელი შეკვეთები</h3>
+        <div id="dash-pending"></div>
       </div>
       <div class="card">
-        <h3 style="font-size:15px;font-weight:800;margin-bottom:12px;color:var(--accent)">📥 ბოლო ჩამოსვლები</h3>
-        <div id="dash-recent"></div>
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:12px;color:var(--warn)">⚠️ დაბალი მარაგი</h3>
+        <div id="dash-low"></div>
       </div>
     </div>
 
@@ -205,11 +214,20 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
     <!-- orders -->
     <div class="section" id="sec-orders">
       <div class="section-header"><h2>🛒 შეკვეთები</h2></div>
+      <div class="toolbar" id="orders-tools">
+        <button class="btn btn-light btn-sm" id="btn-import" onclick="pickExcel()">📤 Excel-ის ატვირთვა</button>
+        <button class="btn btn-light btn-sm" onclick="exportOrders()">📥 ექსპორტი</button>
+        <input type="file" id="excel-file" accept=".xlsx,.xls" style="display:none" onchange="onExcelPicked(event)">
+      </div>
       <div class="toolbar">
+        <input type="search" id="orders-search" placeholder="🔎 ძებნა (დასახელება/ფაილი)…" oninput="renderOrders()">
         <select id="orders-filter" onchange="renderOrders()">
-          <option value="ordered">⏳ მოლოდინში</option>
-          <option value="received">✅ ჩამოსული</option>
+          <option value="active">⏳ ჩამოუსვლელი</option>
           <option value="all">ყველა</option>
+          <option value="notarrived">🔴 არ ჩამოვიდა</option>
+          <option value="transit">🟡 გზაშია</option>
+          <option value="partial">🟠 ნაწილობრივ</option>
+          <option value="arrived">🟢 ჩამოვიდა</option>
         </select>
       </div>
       <div id="orders-list"></div>
@@ -229,14 +247,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
     <!-- users (admin only) -->
     <div class="section" id="sec-users">
       <div class="section-header"><h2>👥 მომხმარებლები</h2></div>
-      <div class="hint">ახალი თანამშრომელი თვითონ რეგისტრირდება შესვლის ეკრანზე („რეგისტრაცია" ჩანართი). შემდეგ აქ დაუმტკიცეთ როლი — სანამ „⏳ მოლოდინში"-ა, აპში ვერ შევა.</div>
+      <div class="hint">ახალი თანამშრომელი თვითონ რეგისტრირდება ემეილით (შესვლის ეკრანი → „რეგისტრაცია"). შემდეგ აქ დაუმტკიცეთ როლი: <b>🛒 შემკვეთი</b> (წერს/ტვირთავს შეკვეთებს) ან <b>📥 მიმღები</b> (ნიშნავს ჩამოსვლის სტატუსს). სანამ „⏳ მოლოდინში"-ა, აპში ვერ შევა.</div>
       <div class="toolbar">
         <input type="search" id="users-search" placeholder="🔎 ძებნა (სახელი/ელ-ფოსტა)…" oninput="renderUsers()">
         <select id="users-filter" onchange="renderUsers()">
           <option value="all">ყველა</option>
           <option value="pending">⏳ მოლოდინში</option>
-          <option value="operator">ოპერატორი</option>
-          <option value="admin">ადმინი</option>
+          <option value="orderer">🛒 შემკვეთი</option>
+          <option value="receiver">📥 მიმღები</option>
+          <option value="admin">👑 ადმინი</option>
         </select>
       </div>
       <div id="users-list"></div>
@@ -316,6 +335,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 <datalist id="units"><option>ცალი</option><option>კგ</option><option>ლ</option><option>გრ</option><option>მ</option><option>ტომარა</option><option>ყუთი</option><option>შეკვრა</option><option>რულონი</option></datalist>
 <datalist id="cats"><option>ქიმია</option><option>ინვენტარი</option><option>სათადარიგო ნაწილები</option><option>დასუფთავება</option><option>სხვა</option></datalist>
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendEmailVerification,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -345,6 +365,25 @@ const fmtN=n=>{const v=Math.round((n+Number.EPSILON)*100)/100;return (v%1===0)?S
 function fmtDate(ts){if(!ts)return '—';const d=ts.toDate?ts.toDate():new Date(ts);if(isNaN(d))return '—';return d.toLocaleDateString('ka-GE',{year:'numeric',month:'short',day:'numeric'});}
 function fmtDateTime(ts){if(!ts)return '—';const d=ts.toDate?ts.toDate():new Date(ts);if(isNaN(d))return '—';return d.toLocaleDateString('ka-GE',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('ka-GE',{hour:'2-digit',minute:'2-digit'});}
 function toast(msg,type='info'){const el=$('toast');el.textContent=msg;el.className='show '+type;clearTimeout(el._t);el._t=setTimeout(()=>el.className=type,3000);}
+
+// ---------- STATUS + ROLES ----------
+const ST={
+  notarrived:{l:'არ ჩამოვიდა',c:'notarrived',e:'🔴'},
+  transit:{l:'გზაშია',c:'transit',e:'🟡'},
+  partial:{l:'ნაწილობრივ',c:'partial',e:'🟠'},
+  arrived:{l:'ჩამოვიდა',c:'arrived',e:'🟢'}
+};
+const ST_KEYS=['notarrived','transit','partial','arrived'];
+// normalise legacy statuses (ordered/received/canceled) to the new set
+function ostat(o){const s=o&&o.status;if(ST[s])return s;return ({ordered:'notarrived',received:'arrived',canceled:'notarrived'})[s]||'notarrived';}
+const ROLE_LBL={admin:'ადმინი',orderer:'შემკვეთი',receiver:'მიმღები',operator:'შემკვეთი',pending:'მოლოდინში'};
+const isAdmin=()=>currentRole==='admin';
+const canEditOrders=()=>['admin','orderer','operator'].includes(currentRole); // create / import / edit / delete
+const canMark=()=>currentRole&&currentRole!=='pending';                       // mark arrival status
+function statusSelect(id,cur){
+  return `<select class="status-sel ${cur}" onchange="setOrderStatus('${id}',this.value)">`+
+    ST_KEYS.map(k=>`<option value="${k}" ${k===cur?'selected':''}>${ST[k].e} ${ST[k].l}</option>`).join('')+`</select>`;
+}
 
 // ---------- AUTH ----------
 onAuthStateChanged(auth,async(user)=>{
@@ -399,8 +438,7 @@ function launchApp(d){
   $('auth-screen').style.display='none';
   $('app').style.display='flex';
   $('ui-name').textContent=d.name;
-  const rl={admin:'ადმინი',operator:'ოპერატორი',pending:'მოლოდინში'};
-  $('role-badge').textContent=rl[d.role]||d.role;
+  $('role-badge').textContent=ROLE_LBL[d.role]||d.role;
   buildNav(d.role);
 }
 
@@ -415,6 +453,7 @@ function buildNav(role){
     el.textContent=label;el.onclick=()=>activateSection(id,el);
     nav.appendChild(el);
   });
+  const ib=$('btn-import');if(ib)ib.style.display=canEditOrders()?'':'none';
   showSection('sec-dash');updateFab('sec-dash');
   startListeners();
 }
@@ -425,7 +464,7 @@ function activateSection(id,el){
 function showSection(id){document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===id));}
 function updateFab(id){
   const fab=$('fab');
-  if(id==='sec-stock'||id==='sec-orders'){fab.style.display='flex';fab.dataset.ctx=id;}
+  if((id==='sec-stock'||id==='sec-orders')&&canEditOrders()){fab.style.display='flex';fab.dataset.ctx=id;}
   else fab.style.display='none';
 }
 window.onFab=function(){const ctx=$('fab').dataset.ctx;if(ctx==='sec-stock')openProduct();else if(ctx==='sec-orders')openOrder();};
@@ -456,23 +495,35 @@ function productById(id){return products.find(p=>p.id===id);}
 function stockState(p){const s=num(p.stock);if(s<=0)return 'out';if(num(p.minStock)>0&&s<=num(p.minStock))return 'low';return 'ok';}
 
 // ---------- DASHBOARD ----------
+function orderName(o){return o.itemName||o.productName||'(უსახელო)';}
 function renderDash(){
   if(!$('dash-stats'))return;
+  const notArr=orders.filter(o=>ostat(o)!=='arrived');
+  const transit=orders.filter(o=>ostat(o)==='transit').length;
+  const arrived=orders.filter(o=>ostat(o)==='arrived').length;
   const low=products.filter(p=>stockState(p)!=='ok');
-  const pendingOrders=orders.filter(o=>o.status==='ordered');
   $('dash-stats').innerHTML=`
-    <div class="stat-card"><div class="num">${products.length}</div><div class="lbl">პროდუქტი სულ</div></div>
-    <div class="stat-card"><div class="num ${low.length?'warn':''}">${low.length}</div><div class="lbl">დაბალი მარაგი</div></div>
-    <div class="stat-card"><div class="num ${pendingOrders.length?'bad':''}">${pendingOrders.length}</div><div class="lbl">მოლოდინში შეკვეთა</div></div>`;
+    <div class="stat-card"><div class="num ${notArr.length?'bad':''}">${notArr.length}</div><div class="lbl">ჩამოუსვლელი</div></div>
+    <div class="stat-card"><div class="num ${transit?'warn':''}">${transit}</div><div class="lbl">გზაშია</div></div>
+    <div class="stat-card"><div class="num">${arrived}</div><div class="lbl">ჩამოვიდა</div></div>`;
+  // not-arrived orders, sorted by date (oldest first), each with marker
+  const pend=notArr.slice().sort((a,b)=>dnum(a.orderDate)-dnum(b.orderDate));
+  $('dash-pending').innerHTML=pend.length?pend.map(o=>{
+    const st=ostat(o);
+    return `<div class="list-row ${st}" style="margin-bottom:8px">
+      <div class="row-top">
+        <div><div class="row-name">${esc(orderName(o))}</div>
+        <div class="row-sub">${o.orderDate?fmtDate(o.orderDate)+' · ':''}${o.department?esc(o.department)+' · ':''}${fmtN(num(o.qty))} ${esc(o.unit||'')}</div></div>
+      </div>
+      <div class="row-actions">${canMark()?statusSelect(o.id,st):'<span class="badge '+st+'">'+ST[st].e+' '+ST[st].l+'</span>'}</div>
+    </div>`;
+  }).join(''):'<p class="muted">ყველა შეკვეთა ჩამოსულია ✓</p>';
   $('dash-low').innerHTML=low.length?low.map(p=>{
-    const st=stockState(p);
-    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--surface3)"><span style="font-weight:700">${esc(p.name)}</span><span class="badge ${st}">${fmtN(num(p.stock))} ${esc(p.unit||'')}</span></div>`;
+    const stt=stockState(p);
+    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--surface3)"><span style="font-weight:700">${esc(p.name)}</span><span class="badge ${stt}">${fmtN(num(p.stock))} ${esc(p.unit||'')}</span></div>`;
   }).join(''):'<p class="muted">ყველა მარაგი საკმარისია ✓</p>';
-  const recent=moves.filter(m=>m.type==='in').slice(0,5);
-  $('dash-recent').innerHTML=recent.length?recent.map(m=>
-    `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--surface3)"><span style="font-weight:700">${esc(m.productName)} <span class="muted">+${fmtN(num(m.qty))} ${esc(m.unit||'')}</span></span><span class="muted">${fmtDateTime(m.createdAt)}</span></div>`
-  ).join(''):'<p class="muted">ჯერ არაფერი ჩამოსულა</p>';
 }
+function dnum(ts){if(!ts)return 8e15;const d=ts.toDate?ts.toDate():new Date(ts);return isNaN(d)?8e15:d.getTime();}
 
 // ---------- INVENTORY ----------
 window.renderStock=function(){
@@ -506,25 +557,38 @@ window.renderStock=function(){
 window.renderOrders=function(){
   if(!$('orders-list'))return;
   const f=$('orders-filter').value;
-  let list=orders.slice();
-  if(f!=='all')list=list.filter(o=>o.status===f);
-  if(!list.length){$('orders-list').innerHTML=emptyBox('🛒','შეკვეთა არ მოიძებნა. დაამატეთ ＋ ღილაკით.');return;}
-  const adm=currentRole==='admin';
-  const stLbl={ordered:'⏳ მოლოდინში',received:'✅ ჩამოსული',canceled:'გაუქმებული'};
-  $('orders-list').innerHTML=list.map(o=>`
-    <div class="list-row">
+  const term=($('orders-search')?$('orders-search').value:'').trim().toLowerCase();
+  let list=orders.slice().sort((a,b)=>dnum(b.createdAt)-dnum(a.createdAt));
+  if(f==='active')list=list.filter(o=>ostat(o)!=='arrived');
+  else if(f!=='all')list=list.filter(o=>ostat(o)===f);
+  if(term)list=list.filter(o=>orderName(o).toLowerCase().includes(term)||(o.sourceFile||'').toLowerCase().includes(term)||(o.purpose||'').toLowerCase().includes(term));
+  if(!list.length){$('orders-list').innerHTML=emptyBox('🛒','შეკვეთა არ მოიძებნა.');return;}
+  const ed=canEditOrders(),mk=canMark();
+  $('orders-list').innerHTML=list.map(o=>{
+    const st=ostat(o);
+    const meta=[o.orderDate?'📅 '+fmtDate(o.orderDate):'',o.department?'🏢 '+esc(o.department):'',o.supplier?'🏭 '+esc(o.supplier):''].filter(Boolean).join(' · ');
+    return `<div class="list-row ${st}">
       <div class="row-top">
-        <div><div class="row-name">${esc(o.productName)}</div>
-        <div class="row-sub">${o.supplier?'🏭 '+esc(o.supplier)+' · ':''}შეკვეთა: ${fmtDate(o.orderDate)}${o.expectedDate?' · მოლოდინი: '+fmtDate(o.expectedDate):''}</div>
+        <div><div class="row-name">${esc(orderName(o))}</div>
+        ${meta?'<div class="row-sub">'+meta+'</div>':''}
+        ${o.purpose?'<div class="row-sub">🎯 '+esc(o.purpose)+'</div>':''}
+        ${o.sourceFile?'<div class="row-sub">📄 '+esc(o.sourceFile)+'</div>':''}
         ${o.note?'<div class="row-sub">📝 '+esc(o.note)+'</div>':''}</div>
         <div class="row-stock"><div class="v">${fmtN(num(o.qty))}</div><div class="u">${esc(o.unit||'')}</div></div>
       </div>
       <div class="row-actions">
-        <span class="badge ${o.status}">${stLbl[o.status]||o.status}</span>
-        ${o.status==='ordered'?`<button class="btn btn-good btn-sm" onclick="openReceive('${o.id}')">✅ ჩამოვიდა</button>
-        <button class="btn btn-light btn-sm" onclick="openOrder('${o.id}')">✏️</button>`:''}
-        ${(adm||o.status==='ordered')?`<button class="btn btn-danger btn-sm" onclick="delOrder('${o.id}')">🗑</button>`:''}
-      </div></div>`).join('');
+        ${mk?statusSelect(o.id,st):'<span class="badge '+st+'">'+ST[st].e+' '+ST[st].l+'</span>'}
+        ${ed?`<button class="btn btn-light btn-sm" onclick="openOrder('${o.id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="delOrder('${o.id}')">🗑</button>`:''}
+      </div></div>`;
+  }).join('');
+};
+window.setOrderStatus=async function(id,status){
+  const o=orders.find(x=>x.id===id);if(!o)return;
+  const data={status,statusBy:currentName,statusAt:serverTimestamp()};
+  if((status==='arrived'||status==='partial')&&!o.arrivedAt)data.arrivedAt=serverTimestamp();
+  try{await updateDoc(doc(db,'wh_orders',id),data);toast('სტატუსი: '+ST[status].e+' '+ST[status].l,'good');}
+  catch(e){toast('შეცდომა: '+e.message,'bad');}
 };
 
 // ---------- ARRIVALS ----------
@@ -557,12 +621,12 @@ window.renderUsers=function(){
   const term=($('users-search').value||'').trim().toLowerCase();
   const filter=$('users-filter').value;
   let list=allUsers.slice().sort((a,b)=>{
-    const rank={pending:0,operator:1,admin:2};return (rank[a.role]??9)-(rank[b.role]??9)||(a.name||'').localeCompare(b.name||'');
+    const rank={pending:0,receiver:1,orderer:1,operator:1,admin:2};return (rank[a.role]??9)-(rank[b.role]??9)||(a.name||'').localeCompare(b.name||'');
   });
   if(term)list=list.filter(u=>(u.name||'').toLowerCase().includes(term)||(u.email||'').toLowerCase().includes(term));
-  if(filter!=='all')list=list.filter(u=>u.role===filter);
+  if(filter!=='all')list=list.filter(u=>u.role===filter||(filter==='orderer'&&u.role==='operator'));
   if(!list.length){$('users-list').innerHTML=emptyBox('👥','მომხმარებელი არ მოიძებნა.');return;}
-  const rlBadge={admin:'<span class="badge received">ადმინი</span>',operator:'<span class="badge ordered">ოპერატორი</span>',pending:'<span class="badge low">⏳ მოლოდინში</span>'};
+  const rlBadge={admin:'<span class="badge received">👑 ადმინი</span>',orderer:'<span class="badge ordered">🛒 შემკვეთი</span>',operator:'<span class="badge ordered">🛒 შემკვეთი</span>',receiver:'<span class="badge arrived">📥 მიმღები</span>',pending:'<span class="badge low">⏳ მოლოდინში</span>'};
   const me=currentUser?currentUser.uid:'';
   $('users-list').innerHTML=list.map(u=>{
     const isMe=u.id===me;
@@ -576,7 +640,8 @@ window.renderUsers=function(){
       ${isMe?'':`<div class="row-actions">
         <select onchange="setRole('${u.id}',this.value)" style="width:auto;flex:0 1 auto;font-size:13px;padding:8px 10px">
           <option value="pending" ${u.role==='pending'?'selected':''}>⏳ მოლოდინში</option>
-          <option value="operator" ${u.role==='operator'?'selected':''}>👷 ოპერატორი</option>
+          <option value="orderer" ${(u.role==='orderer'||u.role==='operator')?'selected':''}>🛒 შემკვეთი</option>
+          <option value="receiver" ${u.role==='receiver'?'selected':''}>📥 მიმღები</option>
           <option value="admin" ${u.role==='admin'?'selected':''}>👑 ადმინი</option>
         </select>
         <button class="btn btn-danger btn-sm" onclick="delUser('${u.id}','${esc((u.name||u.email||'').replace(/'/g,''))}')">🗑</button>
@@ -658,14 +723,106 @@ window.saveOrder=async function(){
     note:$('mo-note').value.trim(),updatedAt:serverTimestamp()};
   try{
     if(id){await updateDoc(doc(db,'wh_orders',id),data);toast('შეკვეთა განახლდა ✓','good');}
-    else{data.status='ordered';data.createdAt=serverTimestamp();data.createdBy=currentUser.uid;data.createdByName=currentName;await addDoc(collection(db,'wh_orders'),data);toast('შეკვეთა დაემატა ✓','good');}
+    else{data.status='notarrived';data.source='manual';data.createdAt=serverTimestamp();data.createdBy=currentUser.uid;data.createdByName=currentName;await addDoc(collection(db,'wh_orders'),data);toast('შეკვეთა დაემატა ✓','good');}
     closeModal('m-order');
   }catch(e){$('mo-err').textContent='შეცდომა: '+e.message;}
 };
 window.delOrder=async function(id){
   const o=orders.find(x=>x.id===id);if(!o)return;
-  if(!confirm(`წავშალო შეკვეთა „${o.productName}"?`))return;
+  if(!confirm(`წავშალო შეკვეთა „${orderName(o)}"?`))return;
   try{await deleteDoc(doc(db,'wh_orders',id));toast('წაიშალა','warn');}catch(e){toast('შეცდომა','bad');}
+};
+
+// ---------- EXCEL IMPORT ----------
+window.pickExcel=function(){if(!window.XLSX){toast('Excel-ის ბიბლიოთეკა იტვირთება, სცადეთ ისევ','warn');return;}$('excel-file').click();};
+function parseGeoDate(s){const m=/(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s||''));if(m)return new Date(+m[3],+m[2]-1,+m[1]);return null;}
+function cellText(v){return (v==null?'':String(v)).trim();}
+function parsePurchaseSheet(rows,fileName){
+  // rows = array of arrays (header:1). Locate the items table header.
+  let hdr=-1,cDesc=1,cPurpose=2,cUnit=3,cQty=4;
+  for(let i=0;i<rows.length;i++){
+    const joined=(rows[i]||[]).map(cellText).join(' ');
+    if(joined.includes('აღწერილობა')&&joined.includes('რაოდენობა')){
+      hdr=i;const r=rows[i].map(cellText);
+      r.forEach((c,ci)=>{
+        if(c.includes('აღწერილობა'))cDesc=ci;
+        else if(c.includes('კომენტარ'))cPurpose=ci;
+        else if(c.includes('ერთეულ'))cUnit=ci;
+        else if(c.includes('რაოდენ'))cQty=ci;
+      });
+      break;
+    }
+  }
+  // date: filename first, else a cell containing "თარიღი"
+  let date=parseGeoDate(fileName);
+  if(!date){
+    outer:for(const row of rows)for(let ci=0;ci<(row||[]).length;ci++){
+      if(cellText(row[ci]).includes('თარიღი')){const nv=row[ci+1];const d=parseGeoDate(nv);if(d){date=d;break outer;}}
+    }
+  }
+  // department
+  let dept='';
+  for(let i=0;i<rows.length;i++){const row=rows[i]||[];for(let ci=0;ci<row.length;ci++){
+    if(cellText(row[ci]).includes('განყოფილების დასახელება')){
+      const nx=cellText(row[ci+1]);
+      if(nx&&!/^\d+$/.test(nx))dept=nx;
+      else{const nr=rows[i+1]||[];dept=cellText(nr[0])||cellText(nr[1]);}
+    }
+  } if(dept)break; }
+  const items=[];
+  if(hdr>=0){
+    let started=false;
+    for(let i=hdr+1;i<rows.length;i++){
+      const row=rows[i]||[];
+      const desc=cellText(row[cDesc]);const qty=cellText(row[cQty]);
+      if(desc&&qty){items.push({itemName:desc,purpose:cellText(row[cPurpose]),unit:cellText(row[cUnit]),qty:num(qty)});started=true;}
+      else if(started&&!desc&&!qty)break;
+    }
+  }
+  return {date,dept,items};
+}
+window.onExcelPicked=async function(ev){
+  const file=ev.target.files&&ev.target.files[0];ev.target.value='';
+  if(!file)return;
+  if(!window.XLSX){toast('Excel-ის ბიბლიოთეკა არ ჩაიტვირთა','bad');return;}
+  toast('მუშავდება…','info');
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+    const disp=file.name.replace(/\.xls[xm]?$/i,'').replace(/_+/g,' ').replace(/\s+/g,' ').trim();
+    const {date,dept,items}=parsePurchaseSheet(rows,file.name);
+    if(!items.length){toast('ნივთები ვერ მოიძებნა ფაილში','warn');return;}
+    if(!confirm(`ფაილი: ${disp}\nთარიღი: ${date?date.toLocaleDateString('ka-GE'):'—'}\nგანყოფილება: ${dept||'—'}\nნაპოვნია ${items.length} ნივთი.\n\nავტვირთო ბაზაში?`))return;
+    let ok=0;
+    for(const it of items){
+      await addDoc(collection(db,'wh_orders'),{
+        itemName:it.itemName,purpose:it.purpose,unit:it.unit,qty:it.qty,
+        department:dept,sourceFile:disp,orderDate:date||null,
+        status:'notarrived',source:'import',
+        createdBy:currentUser.uid,createdByName:currentName,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
+      });ok++;
+    }
+    toast('✓ აიტვირთა '+ok+' ნივთი','good');
+    activateSection('sec-orders',[...document.querySelectorAll('.nav-item')].find(n=>n.textContent.includes('შეკვეთ'))||document.querySelector('.nav-item'));
+  }catch(e){toast('შეცდომა ფაილის წაკითხვისას: '+e.message,'bad');}
+};
+
+// ---------- EXCEL EXPORT ----------
+window.exportOrders=function(){
+  if(!window.XLSX){toast('Excel-ის ბიბლიოთეკა იტვირთება','warn');return;}
+  if(!orders.length){toast('შესაკრები შეკვეთა არ არის','warn');return;}
+  const head=['№','თარიღი','განაცხადი / ფაილი','განყოფილება','საქონლის დასახელება','მიზნობრიობა','ერთეული','რაოდენობა','სტატუსი','შენიშვნა'];
+  const list=orders.slice().sort((a,b)=>dnum(a.orderDate)-dnum(b.orderDate));
+  const aoa=[head];
+  list.forEach((o,i)=>aoa.push([i+1,o.orderDate?fmtDate(o.orderDate):'',o.sourceFile||'',o.department||'',orderName(o),o.purpose||'',o.unit||'',num(o.qty),ST[ostat(o)].l,o.note||'']));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:5},{wch:12},{wch:24},{wch:13},{wch:32},{wch:22},{wch:8},{wch:10},{wch:16},{wch:20}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'შეკვეთები');
+  const d=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,'შეკვეთების_კონტროლი_'+d+'.xlsx');
+  toast('ფაილი ჩამოიტვირთა ✓','good');
 };
 
 // stock move (in/out)
