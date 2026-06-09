@@ -244,6 +244,18 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
       <div id="arrivals-list"></div>
     </div>
 
+    <!-- issues / dispense -->
+    <div class="section" id="sec-issues">
+      <div class="section-header"><h2>📤 გაცემები</h2></div>
+      <div class="hint">მარაგიდან გაცემული ნივთები — რა, რამდენი, რაში/ვის დაეხარჯა და ვინ გასცა. გასაცემად გადადი „📦 მარაგი" → ➖ გაცემა.</div>
+      <div class="toolbar">
+        <input type="search" id="iss-search" placeholder="🔎 ძებნა (ნივთი/კომენტარი)…" oninput="renderIssues()">
+        <input type="date" id="iss-from" onchange="renderIssues()">
+        <input type="date" id="iss-to" onchange="renderIssues()">
+      </div>
+      <div id="issues-list"></div>
+    </div>
+
     <!-- users (admin only) -->
     <div class="section" id="sec-users">
       <div class="section-header"><h2>👥 მომხმარებლები</h2></div>
@@ -313,7 +325,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
     <input type="hidden" id="mm-id"><input type="hidden" id="mm-type">
     <p id="mm-prod" style="font-weight:700;margin-bottom:14px"></p>
     <div class="form-group"><label id="mm-qty-lbl">რაოდენობა</label><input type="number" step="0.01" min="0" id="mm-qty" placeholder="0"></div>
-    <div class="form-group"><label>შენიშვნა</label><input type="text" id="mm-note" placeholder="არასავალდ."></div>
+    <div class="form-group"><label id="mm-note-lbl">შენიშვნა</label><input type="text" id="mm-note" placeholder="არასავალდ."></div>
     <div id="mm-err" class="error-msg"></div>
     <button class="btn btn-primary btn-full" id="mm-save" onclick="saveMove()">დადასტურება</button>
   </div>
@@ -445,7 +457,7 @@ function launchApp(d){
 function buildNav(role){
   const nav=$('main-nav');nav.innerHTML='';
   if(role==='pending'){showSection('sec-pending');$('fab').style.display='none';return;}
-  const items=[['sec-dash','📊 მთავარი'],['sec-stock','📦 მარაგი'],['sec-orders','🛒 შეკვეთები'],['sec-arrivals','📥 ჩამოსული ინვენტარი']];
+  const items=[['sec-dash','📊 მთავარი'],['sec-stock','📦 მარაგი'],['sec-orders','🛒 შეკვეთები'],['sec-arrivals','📥 ჩამოსული ინვენტარი'],['sec-issues','📤 გაცემები']];
   if(role==='admin')items.push(['sec-users','👥 მომხმარებლები']);
   items.forEach(([id,label],i)=>{
     const el=document.createElement('div');
@@ -481,7 +493,7 @@ function startListeners(){
   },e=>{}));
   unsub.push(onSnapshot(query(collection(db,'wh_moves'),orderBy('createdAt','desc')),snap=>{
     moves=snap.docs.map(d=>({id:d.id,...d.data()}));
-    renderArrivals();renderDash();
+    renderIssues();renderDash();
   },e=>{}));
   if(currentRole==='admin'){
     unsub.push(onSnapshot(collection(db,'pool_users'),snap=>{
@@ -640,6 +652,29 @@ window.renderArrivals=function(){
         <div class="row-stock"><div class="v" style="color:var(--good)">+${fmtN(num(o.qty))}</div><div class="u">${esc(o.unit||'')}</div></div>
       </div></div>`;
   }).join('');
+};
+
+// ---------- ISSUES (გაცემები) ----------
+window.renderIssues=function(){
+  if(!$('issues-list'))return;
+  const term=($('iss-search')?$('iss-search').value:'').trim().toLowerCase();
+  const from=$('iss-from')?$('iss-from').value:'',to=$('iss-to')?$('iss-to').value:'';
+  let list=moves.filter(m=>m.type==='out');
+  if(term)list=list.filter(m=>(m.productName||'').toLowerCase().includes(term)||(m.note||'').toLowerCase().includes(term));
+  if(from||to){
+    list=list.filter(m=>{const d=m.createdAt&&m.createdAt.toDate?m.createdAt.toDate():null;if(!d)return false;
+      if(from&&d<new Date(from+'T00:00:00'))return false;
+      if(to&&d>new Date(to+'T23:59:59'))return false;return true;});
+  }
+  if(!list.length){$('issues-list').innerHTML=emptyBox('📤','გაცემა არ მოიძებნა.');return;}
+  $('issues-list').innerHTML=list.map(m=>`
+    <div class="list-row">
+      <div class="row-top">
+        <div><div class="row-name">${esc(m.productName)}</div>
+        ${m.note?'<div class="row-sub">🎯 '+esc(m.note)+'</div>':'<div class="row-sub muted">კომენტარის გარეშე</div>'}
+        <div class="row-sub">👤 ${esc(m.byName||'')} · ${fmtDateTime(m.createdAt)}</div></div>
+        <div class="row-stock"><div class="v" style="color:var(--bad)">−${fmtN(num(m.qty))}</div><div class="u">${esc(m.unit||'')}</div></div>
+      </div></div>`).join('');
 };
 
 function emptyBox(ico,txt){return `<div class="empty"><span class="ico">${ico}</span><p>${txt}</p></div>`;}
@@ -861,6 +896,8 @@ window.openMove=function(pid,type){
   $('mm-title').textContent=type==='in'?'➕ ჩამოსვლა (მიღება)':'➖ გაცემა (ხარჯვა)';
   $('mm-prod').textContent=p.name+' · მარაგი: '+fmtN(num(p.stock))+' '+(p.unit||'');
   $('mm-qty-lbl').textContent=type==='in'?'ჩამოსული რაოდენობა':'გასაცემი რაოდენობა';
+  $('mm-note-lbl').textContent=type==='in'?'შენიშვნა':'🎯 რაში/ვის დაეხარჯა';
+  $('mm-note').placeholder=type==='in'?'არასავალდ.':'მაგ. აუზის შეკეთება, ბარი…';
   $('mm-qty').value='';$('mm-note').value='';$('mm-err').textContent='';
   $('mm-save').className='btn btn-full '+(type==='in'?'btn-good':'btn-warn');
   openModal('m-move');
