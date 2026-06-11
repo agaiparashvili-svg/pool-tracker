@@ -60,11 +60,26 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .content{padding:20px 16px 90px;max-width:1240px;margin:0 auto;width:100%;}
 /* desktop: use full width — lists flow into multiple columns so no empty space */
 @media(min-width:760px){
-  #stock-list,#orders-list,#arrivals-list,#issues-list,#report-list{
+  #stock-list,#arrivals-list,#issues-list,#report-list{
     display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start;
   }
-  #stock-list>.list-row,#orders-list>.list-row,#arrivals-list>.list-row,#issues-list>.list-row,#report-list>.list-row{margin-bottom:0;}
+  #stock-list>.list-row,#arrivals-list>.list-row,#issues-list>.list-row,#report-list>.list-row{margin-bottom:0;}
 }
+.tablewrap{overflow-x:auto;border:1.5px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);background:#fff;-webkit-overflow-scrolling:touch;}
+.otable{width:100%;border-collapse:collapse;font-size:13px;min-width:680px;}
+.otable th{background:var(--surface2);color:var(--text2);font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:10px 9px;text-align:left;border-bottom:2px solid var(--surface3);white-space:nowrap;position:sticky;top:0;z-index:2;}
+.otable td{padding:9px;border-bottom:1px solid var(--surface3);vertical-align:top;}
+.otable tr:last-child td{border-bottom:none;}
+.otable td.c-name{font-weight:700;min-width:150px;max-width:240px;word-break:break-word;}
+.otable td.c-cmt{min-width:120px;max-width:200px;word-break:break-word;color:var(--text2);}
+.otable td.c-num{text-align:right;white-space:nowrap;}
+.otable tr.arrived{background:var(--good-dim);}
+.otable tr.transit{background:rgba(217,119,6,.08);}
+.otable tr.partial{background:#fff3e6;}
+.otable tr.notarrived{background:var(--bad-dim);}
+.otable .status-sel{width:100%;min-width:120px;font-size:12px;padding:6px;}
+.otable input.aq{width:78px;padding:6px 8px;font-size:13px;border-radius:8px;}
+.otable .tac{display:flex;gap:5px;}
 .section{display:none;animation:fadeIn .25s ease;}
 .section.active{display:block;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -332,13 +347,14 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
     <div class="modal-head"><h3 id="mo-title">ახალი შეკვეთა</h3><button class="modal-close" onclick="closeModal('m-order')">✕</button></div>
     <input type="hidden" id="mo-id">
     <div class="form-group"><label>პროდუქტი</label><select id="mo-product"></select></div>
+    <div class="form-group"><label>🎯 კომენტარი / მიზნობრიობა</label><input type="text" id="mo-purpose" placeholder="არასავალდ."></div>
     <div class="modal-row">
       <div class="form-group"><label>რაოდენობა</label><input type="number" step="0.01" min="0" id="mo-qty" placeholder="0"></div>
-      <div class="form-group"><label>მომწოდებელი</label><input type="text" id="mo-supplier" placeholder="არასავალდ."></div>
+      <div class="form-group"><label>💰 ფასი</label><input type="number" step="0.01" min="0" id="mo-price" placeholder="არასავალდ."></div>
     </div>
     <div class="modal-row">
+      <div class="form-group"><label>🏭 მომწოდებელი</label><input type="text" id="mo-supplier" placeholder="არასავალდ."></div>
       <div class="form-group"><label>შეკვეთის თარიღი</label><input type="date" id="mo-date"></div>
-      <div class="form-group"><label>მოლოდინი (თარიღი)</label><input type="date" id="mo-expected"></div>
     </div>
     <div class="form-group"><label>შენიშვნა</label><input type="text" id="mo-note" placeholder="არასავალდ."></div>
     <div id="mo-err" class="error-msg"></div>
@@ -609,25 +625,31 @@ window.renderOrders=function(){
   if(term)list=list.filter(o=>orderName(o).toLowerCase().includes(term)||(o.sourceFile||'').toLowerCase().includes(term)||(o.purpose||'').toLowerCase().includes(term));
   if(!list.length){$('orders-list').innerHTML=emptyBox('🛒','შეკვეთა არ მოიძებნა.');return;}
   const ed=canEditOrders(),mk=canMark();
-  $('orders-list').innerHTML=list.map(o=>{
-    const st=ostat(o);
-    const meta=[o.orderDate?'📅 '+fmtDate(o.orderDate):'',o.department?'🏢 '+esc(o.department):'',o.supplier?'🏭 '+esc(o.supplier):''].filter(Boolean).join(' · ');
-    return `<div class="list-row ${st}">
-      <div class="row-top">
-        <div><div class="row-name">${esc(orderName(o))}</div>
-        ${meta?'<div class="row-sub">'+meta+'</div>':''}
-        ${o.purpose?'<div class="row-sub">🎯 '+esc(o.purpose)+'</div>':''}
-        ${o.sourceFile?'<div class="row-sub">📄 '+esc(o.sourceFile)+'</div>':''}
-        ${o.note?'<div class="row-sub">📝 '+esc(o.note)+'</div>':''}</div>
-        <div class="row-stock"><div class="v">${fmtN(num(o.qty))}</div><div class="u">${esc(o.unit||'')}</div></div>
-      </div>
-      <div class="row-actions">
-        ${mk?statusSelect(o.id,st):'<span class="badge '+st+'">'+ST[st].e+' '+ST[st].l+'</span>'}
-        ${ed?`<button class="btn btn-light btn-sm" onclick="openOrder('${o.id}')">✏️</button>
-        <button class="btn btn-danger btn-sm" onclick="delOrder('${o.id}')">🗑</button>`:''}
-      </div></div>`;
+  const rows=list.map(o=>{
+    const st=ostat(o);const arr=arrivedTarget(o);
+    const sub=o.sourceFile?('📄 '+esc(o.sourceFile)+(o.orderDate?' · '+fmtDate(o.orderDate):'')):(o.orderDate?('📅 '+fmtDate(o.orderDate)):'');
+    return `<tr class="${st}">
+      <td class="c-name">${esc(orderName(o))}${sub?'<div class="row-sub muted" style="font-weight:400">'+sub+'</div>':''}</td>
+      <td class="c-cmt">${esc(o.purpose||'')}</td>
+      <td>${esc(o.unit||'')}</td>
+      <td class="c-num">${fmtN(num(o.qty))}</td>
+      <td class="c-num">${o.price!=null&&o.price!==''?fmtN(num(o.price)):'—'}</td>
+      <td>${mk?statusSelect(o.id,st):'<span class="badge '+st+'">'+ST[st].e+' '+ST[st].l+'</span>'}</td>
+      <td class="c-num">${mk?`<input type="number" class="aq" min="0" step="0.01" value="${arr?fmtN(arr):''}" placeholder="0" onchange="setArrivedQty('${o.id}',this.value)">`:fmtN(arr)}</td>
+      ${ed?`<td><div class="tac"><button class="btn btn-light btn-sm" onclick="openOrder('${o.id}')">✏️</button><button class="btn btn-danger btn-sm" onclick="delOrder('${o.id}')">🗑</button></div></td>`:''}
+    </tr>`;
   }).join('');
+  $('orders-list').innerHTML=`<div class="tablewrap"><table class="otable">
+    <thead><tr>
+      <th>საქონლის დასახელება</th><th>კომენტარი</th><th>ერთ.</th><th>რაოდ.</th><th>ფასი</th><th>სტატუსი</th><th>ჩამოსული</th>${ed?'<th></th>':''}
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
 };
+function arrivedTarget(o,status){
+  const s=status||ostat(o);
+  if(s!=='arrived'&&s!=='partial')return 0;
+  if(o.arrivedQty!=null&&o.arrivedQty!=='')return num(o.arrivedQty);
+  return s==='arrived'?num(o.qty):0;
+}
 // find an existing product matching the order item, or create one
 async function ensureProductForOrder(o,cache){
   if(o.productId){const p=productById(o.productId);if(p)return p;}
@@ -640,38 +662,49 @@ async function ensureProductForOrder(o,cache){
   if(cache)cache.set(key,np);
   return np;
 }
-window.setOrderStatus=async function(id,status){
+// unified arrival handling: keeps stock in sync with the arrived amount (idempotent via appliedQty)
+async function applyArrival(id,opts){
   const o=orders.find(x=>x.id===id);if(!o)return;
+  const status=opts.status!==undefined?opts.status:ostat(o);
+  let aq;
+  if(opts.arrivedQty!==undefined)aq=(opts.arrivedQty===''||opts.arrivedQty==null)?null:num(opts.arrivedQty);
+  else aq=(o.arrivedQty!=null&&o.arrivedQty!=='')?num(o.arrivedQty):null;
+  const isArr=(status==='arrived'||status==='partial');
+  const target=isArr?(aq!=null?aq:(status==='arrived'?num(o.qty):0)):0;
+  const delta=target-num(o.appliedQty||0);
+  let productId=o.productId||null;
   try{
-    // arrived -> reflect full qty in stock; any other status -> remove from stock. Idempotent via appliedQty.
-    const target=status==='arrived'?num(o.qty):0;
-    const applied=num(o.appliedQty||0);
-    const delta=target-applied;
-    let productId=o.productId||null;
     if(delta!==0){
       const p=await ensureProductForOrder(o);productId=p.id;
       await updateDoc(doc(db,'wh_products',p.id),{stock:increment(delta),updatedAt:serverTimestamp()});
       await addDoc(collection(db,'wh_moves'),{productId:p.id,productName:p.name,unit:p.unit||o.unit||'',
         type:delta>0?'in':'out',qty:Math.abs(delta),source:'order',orderId:id,
-        note:delta>0?'შეკვეთა ჩამოვიდა':'სტატუსი შეიცვალა',
+        note:delta>0?'შეკვეთა ჩამოვიდა':'სტატუსი/რაოდენობა შეიცვალა',
         byUid:currentUser.uid,byName:currentName,createdAt:serverTimestamp()});
     }
-    const data={status,appliedQty:target,statusBy:currentName,statusAt:serverTimestamp()};
+    const data={status,appliedQty:target,arrivedQty:isArr?(aq!=null?aq:(status==='arrived'?num(o.qty):0)):null,statusBy:currentName,statusAt:serverTimestamp()};
     if(productId)data.productId=productId;
-    if((status==='arrived'||status==='partial')&&!o.arrivedAt)data.arrivedAt=serverTimestamp();
+    if(isArr&&!o.arrivedAt)data.arrivedAt=serverTimestamp();
     await updateDoc(doc(db,'wh_orders',id),data);
-    toast('სტატუსი: '+ST[status].e+' '+ST[status].l+(delta>0?' · მარაგში დაემატა':(delta<0?' · მარაგიდან მოაკლდა':'')),'good');
+    toast('სტატუსი: '+ST[status].e+' '+ST[status].l+(delta>0?' · მარაგში +'+fmtN(delta):(delta<0?' · მარაგი −'+fmtN(-delta):'')),'good');
   }catch(e){toast('შეცდომა: '+e.message,'bad');}
+}
+window.setOrderStatus=(id,status)=>applyArrival(id,{status});
+window.setArrivedQty=function(id,val){
+  const o=orders.find(x=>x.id===id);if(!o)return;
+  let status=ostat(o);const v=val===''?null:num(val);
+  if(v!=null&&v>0)status=(v>=num(o.qty))?'arrived':'partial';
+  applyArrival(id,{status,arrivedQty:val});
 };
 // one-off reconcile: push every arrived order into stock (idempotent via appliedQty)
 window.reconcileStock=async function(){
-  const pend=orders.filter(o=>{const t=ostat(o)==='arrived'?num(o.qty):0;return t-num(o.appliedQty||0)!==0;});
+  const pend=orders.filter(o=>arrivedTarget(o)-num(o.appliedQty||0)!==0);
   if(!pend.length){toast('ყველაფერი უკვე მარაგშია ✓','good');return;}
   if(!confirm(`${pend.length} ჩამოსული ნივთი დაემატება „მარაგში". გავაგრძელო?`))return;
   const cache=new Map();let n=0;
   for(const o of pend){
     try{
-      const target=ostat(o)==='arrived'?num(o.qty):0;
+      const target=arrivedTarget(o);
       const delta=target-num(o.appliedQty||0);
       if(delta===0)continue;
       const p=await ensureProductForOrder(o,cache);
@@ -709,7 +742,7 @@ window.renderArrivals=function(){
         <div class="row-sub"><span class="badge ${st}">${ST[st].e} ${ST[st].l}</span>${o.department?' · 🏢 '+esc(o.department):''}</div>
         ${o.sourceFile?'<div class="row-sub">📄 '+esc(o.sourceFile)+'</div>':''}
         <div class="row-sub">📅 ${d&&!isNaN(d)?fmtDate(d):'—'}${o.statusBy?' · '+esc(o.statusBy):''}</div></div>
-        <div class="row-stock"><div class="v" style="color:var(--good)">+${fmtN(num(o.qty))}</div><div class="u">${esc(o.unit||'')}</div></div>
+        <div class="row-stock"><div class="v" style="color:var(--good)">+${fmtN(arrivedTarget(o))}</div><div class="u">${esc(o.unit||'')}</div></div>
       </div></div>`;
   }).join('');
 };
@@ -753,7 +786,7 @@ function buildReport(){
     if(!map.has(k))map.set(k,{name:name||'—',unit:unit||'',ordered:0,arrived:0,issued:0,stock:0,hasStock:false,orders:[],issues:[]});
     const e=map.get(k);if(!e.unit&&unit)e.unit=unit;return e;};
   products.forEach(p=>{const e=g(p.name,p.unit);e.stock=num(p.stock);e.hasStock=true;});
-  orders.forEach(o=>{if(!repInRange(o.orderDate))return;const e=g(orderName(o),o.unit);e.ordered+=num(o.qty);if(ostat(o)==='arrived')e.arrived+=num(o.qty);e.orders.push(o);});
+  orders.forEach(o=>{if(!repInRange(o.orderDate))return;const e=g(orderName(o),o.unit);e.ordered+=num(o.qty);e.arrived+=arrivedTarget(o);e.orders.push(o);});
   moves.forEach(m=>{if(m.type!=='out'||!repInRange(m.createdAt))return;const e=g(m.productName,m.unit);e.issued+=num(m.qty);e.issues.push(m);});
   return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name,'ka'));
 }
@@ -903,10 +936,11 @@ window.openOrder=function(id){
   $('mo-id').value=o?o.id:'';
   fillProductSelect();
   $('mo-product').value=o?o.productId:products[0].id;
+  $('mo-purpose').value=o?(o.purpose||''):'';
   $('mo-qty').value=o?num(o.qty):'';
+  $('mo-price').value=o&&o.price!=null&&o.price!==''?num(o.price):'';
   $('mo-supplier').value=o?(o.supplier||''):'';
   $('mo-date').value=o&&o.orderDate?toInput(o.orderDate):new Date().toISOString().slice(0,10);
-  $('mo-expected').value=o&&o.expectedDate?toInput(o.expectedDate):'';
   $('mo-note').value=o?(o.note||''):'';
   $('mo-err').textContent='';
   openModal('m-order');
@@ -917,9 +951,10 @@ window.saveOrder=async function(){
   const qty=num($('mo-qty').value);
   if(!p){$('mo-err').textContent='აირჩიეთ პროდუქტი';return;}
   if(qty<=0){$('mo-err').textContent='რაოდენობა უნდა იყოს > 0';return;}
-  const data={productId:pid,productName:p.name,unit:p.unit||'',qty,supplier:$('mo-supplier').value.trim(),
+  const priceRaw=$('mo-price').value;
+  const data={productId:pid,productName:p.name,unit:p.unit||'',qty,
+    purpose:$('mo-purpose').value.trim(),price:priceRaw===''?null:num(priceRaw),supplier:$('mo-supplier').value.trim(),
     orderDate:$('mo-date').value?new Date($('mo-date').value):null,
-    expectedDate:$('mo-expected').value?new Date($('mo-expected').value):null,
     note:$('mo-note').value.trim(),updatedAt:serverTimestamp()};
   try{
     if(id){await updateDoc(doc(db,'wh_orders',id),data);toast('შეკვეთა განახლდა ✓','good');}
@@ -939,7 +974,7 @@ function parseGeoDate(s){const m=/(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(String(s||
 function cellText(v){return (v==null?'':String(v)).trim();}
 function parsePurchaseSheet(rows,fileName){
   // rows = array of arrays (header:1). Locate the items table header.
-  let hdr=-1,cDesc=1,cPurpose=2,cUnit=3,cQty=4;
+  let hdr=-1,cDesc=1,cPurpose=2,cUnit=3,cQty=4,cPrice=-1;
   for(let i=0;i<rows.length;i++){
     const joined=(rows[i]||[]).map(cellText).join(' ');
     if(joined.includes('აღწერილობა')&&joined.includes('რაოდენობა')){
@@ -949,6 +984,8 @@ function parsePurchaseSheet(rows,fileName){
         else if(c.includes('კომენტარ'))cPurpose=ci;
         else if(c.includes('ერთეულ'))cUnit=ci;
         else if(c.includes('რაოდენ'))cQty=ci;
+        else if(c.includes('ერთეულის ფასი')&&cPrice<0)cPrice=ci;
+        else if(c.includes('ფასი')&&cPrice<0)cPrice=ci;
       });
       break;
     }
@@ -975,7 +1012,8 @@ function parsePurchaseSheet(rows,fileName){
     for(let i=hdr+1;i<rows.length;i++){
       const row=rows[i]||[];
       const desc=cellText(row[cDesc]);const qty=cellText(row[cQty]);
-      if(desc&&qty){items.push({itemName:desc,purpose:cellText(row[cPurpose]),unit:cellText(row[cUnit]),qty:num(qty)});started=true;}
+      const priceRaw=cPrice>=0?cellText(row[cPrice]):'';
+      if(desc&&qty){items.push({itemName:desc,purpose:cellText(row[cPurpose]),unit:cellText(row[cUnit]),qty:num(qty),price:priceRaw===''?null:num(priceRaw)});started=true;}
       else if(started&&!desc&&!qty)break;
     }
   }
@@ -998,7 +1036,7 @@ window.onExcelPicked=async function(ev){
     let ok=0;
     for(const it of items){
       await addDoc(collection(db,'wh_orders'),{
-        itemName:it.itemName,purpose:it.purpose,unit:it.unit,qty:it.qty,
+        itemName:it.itemName,purpose:it.purpose,unit:it.unit,qty:it.qty,price:it.price!=null?it.price:null,
         department:dept,sourceFile:disp,orderDate:date||null,
         status:'notarrived',source:'import',
         createdBy:currentUser.uid,createdByName:currentName,createdAt:serverTimestamp(),updatedAt:serverTimestamp()
@@ -1013,12 +1051,12 @@ window.onExcelPicked=async function(ev){
 window.exportOrders=function(){
   if(!window.XLSX){toast('Excel-ის ბიბლიოთეკა იტვირთება','warn');return;}
   if(!orders.length){toast('შესაკრები შეკვეთა არ არის','warn');return;}
-  const head=['№','თარიღი','განაცხადი / ფაილი','განყოფილება','საქონლის დასახელება','მიზნობრიობა','ერთეული','რაოდენობა','სტატუსი','შენიშვნა'];
+  const head=['№','თარიღი','განაცხადი / ფაილი','განყოფილება','საქონლის დასახელება','კომენტარი','ერთეული','რაოდენობა','ფასი','სტატუსი','ჩამოსული','შენიშვნა'];
   const list=orders.slice().sort((a,b)=>dnum(a.orderDate)-dnum(b.orderDate));
   const aoa=[head];
-  list.forEach((o,i)=>aoa.push([i+1,o.orderDate?fmtDate(o.orderDate):'',o.sourceFile||'',o.department||'',orderName(o),o.purpose||'',o.unit||'',num(o.qty),ST[ostat(o)].l,o.note||'']));
+  list.forEach((o,i)=>aoa.push([i+1,o.orderDate?fmtDate(o.orderDate):'',o.sourceFile||'',o.department||'',orderName(o),o.purpose||'',o.unit||'',num(o.qty),o.price!=null&&o.price!==''?num(o.price):'',ST[ostat(o)].l,arrivedTarget(o),o.note||'']));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:5},{wch:12},{wch:24},{wch:13},{wch:32},{wch:22},{wch:8},{wch:10},{wch:16},{wch:20}];
+  ws['!cols']=[{wch:5},{wch:12},{wch:24},{wch:13},{wch:32},{wch:22},{wch:8},{wch:10},{wch:9},{wch:16},{wch:10},{wch:20}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'შეკვეთები');
   const d=new Date().toISOString().slice(0,10);
   XLSX.writeFile(wb,'შეკვეთების_კონტროლი_'+d+'.xlsx');
