@@ -60,10 +60,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .content{padding:20px 16px 90px;max-width:1240px;margin:0 auto;width:100%;}
 /* desktop: use full width — lists flow into multiple columns so no empty space */
 @media(min-width:760px){
-  #stock-list,#arrivals-list,#issues-list,#report-list{
+  #stock-list,#issues-list,#report-list{
     display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start;
   }
-  #stock-list>.list-row,#arrivals-list>.list-row,#issues-list>.list-row,#report-list>.list-row{margin-bottom:0;}
+  #stock-list>.list-row,#issues-list>.list-row,#report-list>.list-row{margin-bottom:0;}
 }
 .tablewrap{overflow-x:auto;border:1.5px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);background:#fff;-webkit-overflow-scrolling:touch;}
 .otable{width:100%;border-collapse:collapse;font-size:13px;min-width:680px;}
@@ -258,7 +258,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
     <!-- arrived inventory -->
     <div class="section" id="sec-arrivals">
       <div class="section-header"><h2>📥 ჩამოსული ინვენტარი</h2></div>
-      <div class="hint">აქ ჩანს ყველა ნივთი, რომელიც „🟢 ჩამოვიდა"-დ მოინიშნა. ჩამოსვლისას ის ავტომატურად ემატება „📦 მარაგს".</div>
+      <div class="hint">შემკვეთი ნივთს ნიშნავს „🟢 ჩამოვიდა"-დ → ის აქ ჩნდება <b>დასადასტურებლად</b>. <b>მიმღები</b> ადასტურებს „✅ მივიღე / ❌ არ მივიღე" — და მხოლოდ დადასტურების შემდეგ ემატება „📦 მარაგს".</div>
       <div class="toolbar">
         <button class="btn btn-good btn-sm" id="btn-sync" onclick="reconcileStock()">🔄 მარაგში სინქი</button>
         <input type="date" id="arr-from" onchange="renderArrivals()">
@@ -434,8 +434,9 @@ const ST_KEYS=['notarrived','transit','partial','arrived'];
 function ostat(o){const s=o&&o.status;if(ST[s])return s;return ({ordered:'notarrived',received:'arrived',canceled:'notarrived'})[s]||'notarrived';}
 const ROLE_LBL={admin:'ადმინი',orderer:'შემკვეთი',receiver:'მიმღები',operator:'შემკვეთი',pending:'მოლოდინში'};
 const isAdmin=()=>currentRole==='admin';
-const canEditOrders=()=>['admin','orderer','operator'].includes(currentRole); // create / import / edit / delete
-const canMark=()=>currentRole&&currentRole!=='pending';                       // mark arrival status
+const canEditOrders=()=>['admin','orderer','operator'].includes(currentRole); // create / import / edit / delete / mark status
+const canMark=()=>canEditOrders();                                            // set arrival status (orderer/admin)
+const canConfirm=()=>['admin','receiver'].includes(currentRole);              // confirm physical receipt (receiver/admin)
 function statusSelect(id,cur){
   return `<select class="status-sel ${cur}" onchange="setOrderStatus('${id}',this.value)">`+
     ST_KEYS.map(k=>`<option value="${k}" ${k===cur?'selected':''}>${ST[k].e} ${ST[k].l}</option>`).join('')+`</select>`;
@@ -625,8 +626,9 @@ window.renderOrders=function(){
   if(term)list=list.filter(o=>orderName(o).toLowerCase().includes(term)||(o.sourceFile||'').toLowerCase().includes(term)||(o.purpose||'').toLowerCase().includes(term));
   if(!list.length){$('orders-list').innerHTML=emptyBox('🛒','შეკვეთა არ მოიძებნა.');return;}
   const ed=canEditOrders(),mk=canMark();
+  const rcLbl={pending:'⏳ მიმღების მოლოდინში',confirmed:'✅ მიღებულია',rejected:'❌ უარყოფილია'};
   const rows=list.map(o=>{
-    const st=ostat(o);const arr=arrivedTarget(o);
+    const st=ostat(o);const arr=arrivedTarget(o);const rc=receiptOf(o);
     const sub=o.sourceFile?('📄 '+esc(o.sourceFile)+(o.orderDate?' · '+fmtDate(o.orderDate):'')):(o.orderDate?('📅 '+fmtDate(o.orderDate)):'');
     return `<tr class="${st}">
       <td class="c-name">${esc(orderName(o))}${sub?'<div class="row-sub muted" style="font-weight:400">'+sub+'</div>':''}</td>
@@ -634,7 +636,7 @@ window.renderOrders=function(){
       <td>${esc(o.unit||'')}</td>
       <td class="c-num">${fmtN(num(o.qty))}</td>
       <td class="c-num">${o.price!=null&&o.price!==''?fmtN(num(o.price)):'—'}</td>
-      <td>${mk?statusSelect(o.id,st):'<span class="badge '+st+'">'+ST[st].e+' '+ST[st].l+'</span>'}</td>
+      <td>${mk?statusSelect(o.id,st):'<span class="badge '+st+'">'+ST[st].e+' '+ST[st].l+'</span>'}${rc?'<div class="row-sub muted" style="margin-top:3px">'+rcLbl[rc]+'</div>':''}</td>
       <td class="c-num">${mk?`<input type="number" class="aq" min="0" step="0.01" value="${arr?fmtN(arr):''}" placeholder="0" onchange="setArrivedQty('${o.id}',this.value)">`:fmtN(arr)}</td>
       ${ed?`<td><div class="tac"><button class="btn btn-light btn-sm" onclick="openOrder('${o.id}')">✏️</button><button class="btn btn-danger btn-sm" onclick="delOrder('${o.id}')">🗑</button></div></td>`:''}
     </tr>`;
@@ -662,7 +664,28 @@ async function ensureProductForOrder(o,cache){
   if(cache)cache.set(key,np);
   return np;
 }
-// unified arrival handling: keeps stock in sync with the arrived amount (idempotent via appliedQty)
+// receipt state of an order: pending (awaiting receiver) / confirmed / rejected / null
+function receiptOf(o){
+  if(o.receipt)return o.receipt;
+  if(num(o.appliedQty||0)>0)return 'confirmed';            // legacy: already in stock
+  const s=ostat(o);return (s==='arrived'||s==='partial')?'pending':null;
+}
+function stockTarget(o){return receiptOf(o)==='confirmed'?arrivedTarget(o):0;} // only confirmed receipts affect stock
+// move stock to match a target amount for this order (idempotent via appliedQty)
+async function reconcileStockTo(o,target,noteIn,noteOut){
+  const delta=target-num(o.appliedQty||0);
+  let productId=o.productId||null;
+  if(delta!==0){
+    const p=await ensureProductForOrder(o);productId=p.id;
+    await updateDoc(doc(db,'wh_products',p.id),{stock:increment(delta),updatedAt:serverTimestamp()});
+    await addDoc(collection(db,'wh_moves'),{productId:p.id,productName:p.name,unit:p.unit||o.unit||'',
+      type:delta>0?'in':'out',qty:Math.abs(delta),source:'order',orderId:o.id,
+      note:delta>0?(noteIn||'მიღება დადასტურდა'):(noteOut||'მიღება შეიცვალა'),
+      byUid:currentUser.uid,byName:currentName,createdAt:serverTimestamp()});
+  }
+  return {productId,appliedQty:target};
+}
+// orderer sets status/arrived qty — does NOT add to stock; goes to receiver for confirmation
 async function applyArrival(id,opts){
   const o=orders.find(x=>x.id===id);if(!o)return;
   const status=opts.status!==undefined?opts.status:ostat(o);
@@ -670,23 +693,17 @@ async function applyArrival(id,opts){
   if(opts.arrivedQty!==undefined)aq=(opts.arrivedQty===''||opts.arrivedQty==null)?null:num(opts.arrivedQty);
   else aq=(o.arrivedQty!=null&&o.arrivedQty!=='')?num(o.arrivedQty):null;
   const isArr=(status==='arrived'||status==='partial');
-  const target=isArr?(aq!=null?aq:(status==='arrived'?num(o.qty):0)):0;
-  const delta=target-num(o.appliedQty||0);
-  let productId=o.productId||null;
+  const arrAmt=isArr?(aq!=null?aq:(status==='arrived'?num(o.qty):0)):0;
+  // receipt: keep 'confirmed' if already confirmed (qty edits adjust stock); otherwise 'pending'
+  let receipt=isArr?(receiptOf(o)==='confirmed'?'confirmed':'pending'):null;
+  const merged={...o,status,arrivedQty:isArr?arrAmt:null,receipt};
   try{
-    if(delta!==0){
-      const p=await ensureProductForOrder(o);productId=p.id;
-      await updateDoc(doc(db,'wh_products',p.id),{stock:increment(delta),updatedAt:serverTimestamp()});
-      await addDoc(collection(db,'wh_moves'),{productId:p.id,productName:p.name,unit:p.unit||o.unit||'',
-        type:delta>0?'in':'out',qty:Math.abs(delta),source:'order',orderId:id,
-        note:delta>0?'შეკვეთა ჩამოვიდა':'სტატუსი/რაოდენობა შეიცვალა',
-        byUid:currentUser.uid,byName:currentName,createdAt:serverTimestamp()});
-    }
-    const data={status,appliedQty:target,arrivedQty:isArr?(aq!=null?aq:(status==='arrived'?num(o.qty):0)):null,statusBy:currentName,statusAt:serverTimestamp()};
-    if(productId)data.productId=productId;
+    const r=await reconcileStockTo(merged,stockTarget(merged),'მიღება დადასტურდა','სტატუსი/რაოდენობა შეიცვალა');
+    const data={status,arrivedQty:isArr?arrAmt:null,receipt,appliedQty:r.appliedQty,statusBy:currentName,statusAt:serverTimestamp()};
+    if(r.productId)data.productId=r.productId;
     if(isArr&&!o.arrivedAt)data.arrivedAt=serverTimestamp();
     await updateDoc(doc(db,'wh_orders',id),data);
-    toast('სტატუსი: '+ST[status].e+' '+ST[status].l+(delta>0?' · მარაგში +'+fmtN(delta):(delta<0?' · მარაგი −'+fmtN(-delta):'')),'good');
+    toast(isArr&&receipt==='pending'?'მონიშნულია — ელოდება მიმღების დადასტურებას ⏳':'სტატუსი: '+ST[status].e+' '+ST[status].l,'good');
   }catch(e){toast('შეცდომა: '+e.message,'bad');}
 }
 window.setOrderStatus=(id,status)=>applyArrival(id,{status});
@@ -696,15 +713,34 @@ window.setArrivedQty=function(id,val){
   if(v!=null&&v>0)status=(v>=num(o.qty))?'arrived':'partial';
   applyArrival(id,{status,arrivedQty:val});
 };
-// one-off reconcile: push every arrived order into stock (idempotent via appliedQty)
+// receiver confirms (or rejects) physical receipt — THIS is what moves goods into stock
+window.confirmReceipt=async function(id,accept){
+  const o=orders.find(x=>x.id===id);if(!o)return;
+  try{
+    if(accept){
+      const merged={...o,receipt:'confirmed'};
+      const r=await reconcileStockTo(merged,arrivedTarget(merged),'მიღება დადასტურდა (მიმღები)','');
+      const data={receipt:'confirmed',appliedQty:r.appliedQty,receivedBy:currentName,receivedAt:serverTimestamp()};
+      if(r.productId)data.productId=r.productId;
+      await updateDoc(doc(db,'wh_orders',id),data);
+      toast('✓ მიღება დადასტურდა · მარაგში დაემატა','good');
+    }else{
+      const merged={...o,receipt:'rejected'};
+      const r=await reconcileStockTo(merged,0,'','მიღება უარყოფილია');
+      await updateDoc(doc(db,'wh_orders',id),{receipt:'rejected',appliedQty:0,rejectedBy:currentName,rejectedAt:serverTimestamp()});
+      toast('მიღება უარყოფილია','warn');
+    }
+  }catch(e){toast('შეცდომა: '+e.message,'bad');}
+};
+// repair tool: reconcile CONFIRMED receipts into stock (idempotent via appliedQty)
 window.reconcileStock=async function(){
-  const pend=orders.filter(o=>arrivedTarget(o)-num(o.appliedQty||0)!==0);
-  if(!pend.length){toast('ყველაფერი უკვე მარაგშია ✓','good');return;}
-  if(!confirm(`${pend.length} ჩამოსული ნივთი დაემატება „მარაგში". გავაგრძელო?`))return;
+  const pend=orders.filter(o=>stockTarget(o)-num(o.appliedQty||0)!==0);
+  if(!pend.length){toast('ყველაფერი უკვე სინქშია ✓','good');return;}
+  if(!confirm(`${pend.length} დადასტურებული ნივთი დაშინქდება მარაგთან. გავაგრძელო?`))return;
   const cache=new Map();let n=0;
   for(const o of pend){
     try{
-      const target=arrivedTarget(o);
+      const target=stockTarget(o);
       const delta=target-num(o.appliedQty||0);
       if(delta===0)continue;
       const p=await ensureProductForOrder(o,cache);
@@ -721,30 +757,38 @@ window.reconcileStock=async function(){
   toast('✓ მარაგში დაემატა '+n+' ნივთი','good');
 };
 
-// ---------- ARRIVED INVENTORY (ჩამოსული ინვენტარი) ----------
+// ---------- RECEIVING (ჩამოსული ინვენტარი / მიღება) ----------
+function arrCard(o,extra){
+  const d=(o.receivedAt&&o.receivedAt.toDate)?o.receivedAt.toDate():((o.arrivedAt&&o.arrivedAt.toDate)?o.arrivedAt.toDate():(o.orderDate&&o.orderDate.toDate?o.orderDate.toDate():(o.orderDate?new Date(o.orderDate):null)));
+  const st=ostat(o);
+  return `<div class="list-row ${st}">
+    <div class="row-top">
+      <div><div class="row-name">${esc(orderName(o))}</div>
+      ${o.purpose?'<div class="row-sub">🎯 '+esc(o.purpose)+'</div>':''}
+      <div class="row-sub">${o.department?'🏢 '+esc(o.department)+' · ':''}${o.statusBy?'მონიშნა: '+esc(o.statusBy):''}</div>
+      ${o.sourceFile?'<div class="row-sub">📄 '+esc(o.sourceFile)+'</div>':''}
+      <div class="row-sub">📅 ${d&&!isNaN(d)?fmtDate(d):'—'}${o.receivedBy?' · მიიღო: '+esc(o.receivedBy):''}</div></div>
+      <div class="row-stock"><div class="v" style="color:var(--good)">+${fmtN(arrivedTarget(o))}</div><div class="u">${esc(o.unit||'')}</div></div>
+    </div>${extra||''}</div>`;
+}
 window.renderArrivals=function(){
   if(!$('arrivals-list'))return;
   const from=$('arr-from').value,to=$('arr-to').value;
   const adate=o=>(o.arrivedAt&&o.arrivedAt.toDate)?o.arrivedAt.toDate():(o.orderDate&&o.orderDate.toDate?o.orderDate.toDate():(o.orderDate?new Date(o.orderDate):null));
-  let list=orders.filter(o=>{const s=ostat(o);return s==='arrived'||s==='partial';});
-  if(from||to){
-    list=list.filter(o=>{const d=adate(o);if(!d||isNaN(d))return false;
-      if(from&&d<new Date(from+'T00:00:00'))return false;
-      if(to&&d>new Date(to+'T23:59:59'))return false;return true;});
-  }
-  list.sort((a,b)=>dnum(b.arrivedAt||b.orderDate)-dnum(a.arrivedAt||a.orderDate));
-  if(!list.length){$('arrivals-list').innerHTML=emptyBox('📥','ჩამოსული ინვენტარი არ მოიძებნა.');return;}
-  $('arrivals-list').innerHTML=list.map(o=>{
-    const st=ostat(o);const d=adate(o);
-    return `<div class="list-row ${st}">
-      <div class="row-top">
-        <div><div class="row-name">${esc(orderName(o))}</div>
-        <div class="row-sub"><span class="badge ${st}">${ST[st].e} ${ST[st].l}</span>${o.department?' · 🏢 '+esc(o.department):''}</div>
-        ${o.sourceFile?'<div class="row-sub">📄 '+esc(o.sourceFile)+'</div>':''}
-        <div class="row-sub">📅 ${d&&!isNaN(d)?fmtDate(d):'—'}${o.statusBy?' · '+esc(o.statusBy):''}</div></div>
-        <div class="row-stock"><div class="v" style="color:var(--good)">+${fmtN(arrivedTarget(o))}</div><div class="u">${esc(o.unit||'')}</div></div>
-      </div></div>`;
-  }).join('');
+  const inRange=o=>{if(!from&&!to)return true;const d=adate(o);if(!d||isNaN(d))return false;
+    if(from&&d<new Date(from+'T00:00:00'))return false;if(to&&d>new Date(to+'T23:59:59'))return false;return true;};
+  const arrived=orders.filter(o=>{const s=ostat(o);return s==='arrived'||s==='partial';}).filter(inRange);
+  const pending=arrived.filter(o=>receiptOf(o)==='pending').sort((a,b)=>dnum(a.arrivedAt||a.orderDate)-dnum(b.arrivedAt||b.orderDate));
+  const confirmed=arrived.filter(o=>receiptOf(o)==='confirmed').sort((a,b)=>dnum(b.receivedAt||b.arrivedAt)-dnum(a.receivedAt||a.arrivedAt));
+  const cf=canConfirm();
+  let html='';
+  // pending receiver confirmation
+  html+=`<h3 style="font-size:14px;font-weight:800;color:var(--warn);margin:4px 0 10px">⏳ დასადასტურებელი (${pending.length})</h3>`;
+  html+=pending.length?pending.map(o=>arrCard(o,cf?`<div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}',true)">✅ მივიღე</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}',false)">❌ არ მივიღე</button></div>`:'<div class="row-sub muted">ელოდება მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">დასადასტურებელი არაფერია ✓</p>';
+  // confirmed (received into stock)
+  html+=`<h3 style="font-size:14px;font-weight:800;color:var(--good);margin:18px 0 10px">✅ მიღებული — მარაგში (${confirmed.length})</h3>`;
+  html+=confirmed.length?confirmed.map(o=>arrCard(o)).join(''):'<p class="muted">ჯერ არაფერი მიღებულა</p>';
+  $('arrivals-list').innerHTML=html;
 };
 
 // ---------- ISSUES (გაცემები) ----------
