@@ -8,18 +8,20 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
-    function myRole() {
-      return get(/databases/$(database)/documents/pool_users/$(request.auth.uid)).data.role;
+    function udata() {
+      return get(/databases/$(database)/documents/pool_users/$(request.auth.uid)).data;
     }
+    function whRole() { return udata().get('whRole', ''); }   // საწყობის როლი
+    function poolRole() { return udata().get('role', ''); }   // აუზების როლი (legacy)
     function approved() {
-      return signedIn() && myRole() in ['admin', 'orderer', 'receiver', 'operator'];
+      return signedIn() && (whRole() in ['admin','orderer','receiver'] || poolRole() in ['admin','orderer','receiver']);
     }
     function isAdmin() {
-      return signedIn() && myRole() == 'admin';
+      return signedIn() && (whRole() == 'admin' || poolRole() == 'admin');
     }
 
     // მომხმარებლები: ნებისმიერ შესულს შეუძლია წაკითხვა (როლის შემოწმება, სია);
-    // რეგისტრაციისას მომხმარებელი ქმნის თავის ჩანაწერს; სხვებს მართავს ადმინი.
+    // რეგისტრაციისას ქმნის თავის ჩანაწერს; სხვებს მართავს ადმინი.
     match /pool_users/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
