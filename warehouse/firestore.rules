@@ -14,7 +14,7 @@ service cloud.firestore {
     function whRole() { return udata().get('whRole', ''); }   // საწყობის როლი
     function poolRole() { return udata().get('role', ''); }   // აუზების როლი (legacy)
     function approved() {
-      return signedIn() && (whRole() in ['admin','orderer','receiver'] || poolRole() in ['admin','orderer','receiver']);
+      return signedIn() && (whRole() in ['admin','orderer','receiver','techreceiver'] || poolRole() in ['admin','orderer','receiver']);
     }
     function isAdmin() {
       return signedIn() && (whRole() == 'admin' || poolRole() == 'admin');
