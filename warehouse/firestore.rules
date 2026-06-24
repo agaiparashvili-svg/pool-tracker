@@ -1,18 +1,11 @@
 rules_version = '2';
-
-// საწყობის + აუზების აპის Firestore წესები.
-// გამოყენება: Firebase Console → Firestore Database → Rules → ჩასვი ეს მთლიანად → Publish.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
-      return request.auth != null;
-    }
-    function udata() {
-      return get(/databases/$(database)/documents/pool_users/$(request.auth.uid)).data;
-    }
-    function whRole() { return udata().get('whRole', ''); }   // საწყობის როლი
-    function poolRole() { return udata().get('role', ''); }   // აუზების როლი (legacy)
+    function signedIn() { return request.auth != null; }
+    function udata() { return get(/databases/$(database)/documents/pool_users/$(request.auth.uid)).data; }
+    function whRole() { return udata().get('whRole', ''); }
+    function poolRole() { return udata().get('role', ''); }
     function approved() {
       return signedIn() && (whRole() in ['admin','orderer','receiver'] || poolRole() in ['admin','orderer','receiver']);
     }
@@ -20,20 +13,12 @@ service cloud.firestore {
       return signedIn() && (whRole() == 'admin' || poolRole() == 'admin');
     }
 
-    // მომხმარებლები: ნებისმიერ შესულს შეუძლია წაკითხვა (როლის შემოწმება, სია);
-    // რეგისტრაციისას ქმნის თავის ჩანაწერს; სხვებს მართავს ადმინი.
     match /pool_users/{uid} {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
       allow update, delete: if isAdmin();
     }
-
-    // აუზების რეპორტები (არსებული აპი)
-    match /pool_reports/{id} {
-      allow read, write: if signedIn();
-    }
-
-    // საწყობი — მხოლოდ დადასტურებული მომხმარებლები
+    match /pool_reports/{id} { allow read, write: if signedIn(); }
     match /wh_products/{id} { allow read, write: if approved(); }
     match /wh_orders/{id}   { allow read, write: if approved(); }
     match /wh_moves/{id}    { allow read, write: if approved(); }
