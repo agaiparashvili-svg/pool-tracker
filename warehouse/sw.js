@@ -1,14 +1,12 @@
 // Service worker for the warehouse PWA.
 // HTML/navigation: network-first (so deploys show up immediately when online).
 // Static assets (icons): cache-first. Firebase/CDN: passthrough.
-const CACHE = 'warehouse-v2';
+const CACHE = 'warehouse-v3';
+// keep the shell minimal so a missing/renamed icon can't break SW install
 const SHELL = [
   './',
   './index.html',
-  './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+  './manifest.webmanifest'
 ];
 
 self.addEventListener('install', (e) => {
