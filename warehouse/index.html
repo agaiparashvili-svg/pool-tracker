@@ -448,18 +448,26 @@ function statusSelect(id,cur){
 // Warehouse has its OWN users collection (wh_users) — fully separate from the pool app.
 onAuthStateChanged(auth,async(user)=>{
   unsub.forEach(u=>u());unsub=[];
-  if(user){
-    currentUser=user;
-    const ref=doc(db,'wh_users',user.uid);
-    let snap=await getDoc(ref);
-    if(!snap.exists()){
-      const role=(user.email==='admin@pool.ge')?'admin':'pending';
-      await setDoc(ref,{uid:user.uid,name:user.displayName||user.email,email:user.email,role,createdAt:serverTimestamp()});
-      snap=await getDoc(ref);
-    }
-    const d=snap.data();currentRole=d.role;currentName=d.name||user.email;
-    hideLoading();launchApp(d);
-  }else{currentUser=null;currentRole=null;hideLoading();showAuth();}
+  try{
+    if(user){
+      currentUser=user;
+      const ref=doc(db,'wh_users',user.uid);
+      let snap=await getDoc(ref);
+      if(!snap.exists()){
+        const role=(user.email==='admin@pool.ge')?'admin':'pending';
+        await setDoc(ref,{uid:user.uid,name:user.displayName||user.email,email:user.email,role,createdAt:serverTimestamp()});
+        snap=await getDoc(ref);
+      }
+      const d=snap.data();currentRole=d.role;currentName=d.name||user.email;
+      hideLoading();launchApp(d);
+    }else{currentUser=null;currentRole=null;hideLoading();showAuth();}
+  }catch(e){
+    // never hang on the loading screen — e.g. if Firestore rules aren't published yet
+    hideLoading();
+    try{await signOut(auth);}catch(_){}
+    showAuth();
+    const el=$('li-err');if(el)el.textContent='ბაზასთან კავშირი ვერ მოხერხდა. შეამოწმეთ Firestore წესები და სცადეთ ხელახლა.';
+  }
 });
 
 function hideLoading(){$('loading-screen').style.display='none';}
