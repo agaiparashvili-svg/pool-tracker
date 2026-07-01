@@ -296,12 +296,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
     <!-- users (admin only) -->
     <div class="section" id="sec-users">
       <div class="section-header"><h2>👥 მომხმარებლები</h2></div>
-      <div class="hint">აქ მხოლოდ <b>საწყობის გუნდია</b> (აუზების აპის ხალხი არ ჩანს). ახალი თანამშრომელი ჯერ რეგისტრირდება ემეილით → შემდეგ „➕ დასამატებლად" ნახავ მათ და მიანიჭებ როლს: <b>🛒 შემკვეთი</b> / <b>📥 მიმღები</b> / <b>👑 ადმინი</b>.</div>
+      <div class="hint">მხოლოდ საწყობის მომხმარებლები (აუზების აპთან კავშირი არ აქვს). ახალი თანამშრომელი რეგისტრირდება ემეილით → შემდეგ აქ მიანიჭებ როლს: <b>🛒 შემკვეთი</b> / <b>📥 საწყობის მიმღები</b> / <b>🔧 ტექნიკური მიმღები</b> / <b>👑 ადმინი</b>. სანამ „⏳ მოლოდინში"-ა, აპში ვერ შევა.</div>
       <div class="toolbar">
         <input type="search" id="users-search" placeholder="🔎 ძებნა (სახელი/ელ-ფოსტა)…" oninput="renderUsers()">
         <select id="users-filter" onchange="renderUsers()">
-          <option value="all">საწყობის გუნდი</option>
-          <option value="add">➕ დასამატებლად</option>
+          <option value="all">ყველა</option>
           <option value="pending">⏳ მოლოდინში</option>
           <option value="orderer">🛒 შემკვეთი</option>
           <option value="receiver">📥 საწყობის მიმღები</option>
@@ -399,7 +398,7 @@ import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-ap
 import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendEmailVerification,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFirestore,collection,doc,setDoc,getDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,serverTimestamp,increment}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// Same Firebase project as the pool-tracker app — shared accounts (pool_users).
+// Same Firebase project, but the warehouse has its own collections (wh_users, wh_*) — no link to the pool app.
 const firebaseConfig={
   apiKey:"AIzaSyCbN82LelJ26PtYAe2jDUKRElaHL8m83us",
   authDomain:"pool-tracker-82049.firebaseapp.com",
@@ -446,31 +445,21 @@ function statusSelect(id,cur){
 }
 
 // ---------- AUTH ----------
-// Warehouse uses its OWN role field (whRole) so pool-app users don't appear here.
-function resolveWhRole(d){
-  if(d.whRole)return d.whRole;
-  if(d.role==='admin')return 'admin';                       // shared admin
-  if(d.role==='orderer'||d.role==='receiver')return d.role; // legacy warehouse roles
-  return 'pending';
-}
+// Warehouse has its OWN users collection (wh_users) — fully separate from the pool app.
 onAuthStateChanged(auth,async(user)=>{
   unsub.forEach(u=>u());unsub=[];
   if(user){
     currentUser=user;
-    const snap=await getDoc(doc(db,'pool_users',user.uid));
-    if(snap.exists()){
-      const d=snap.data();currentRole=resolveWhRole(d);currentName=d.name||user.email;
-      hideLoading();launchApp({...d,role:currentRole});
+    const ref=doc(db,'wh_users',user.uid);
+    let snap=await getDoc(ref);
+    if(!snap.exists()){
+      const role=(user.email==='admin@pool.ge')?'admin':'pending';
+      await setDoc(ref,{uid:user.uid,name:user.displayName||user.email,email:user.email,role,createdAt:serverTimestamp()});
+      snap=await getDoc(ref);
     }
-    else{await signOut(auth);hideLoading();showAuth();}
+    const d=snap.data();currentRole=d.role;currentName=d.name||user.email;
+    hideLoading();launchApp(d);
   }else{currentUser=null;currentRole=null;hideLoading();showAuth();}
-});
-onAuthStateChanged(auth,async(user)=>{
-  if(user&&user.email==='admin@pool.ge'){
-    const ref=doc(db,'pool_users',user.uid);const snap=await getDoc(ref);
-    if(!snap.exists())await setDoc(ref,{uid:user.uid,name:'ადმინი',email:user.email,role:'admin',whRole:'admin',createdAt:serverTimestamp()});
-    else if(!snap.data().whRole)await updateDoc(ref,{whRole:'admin'});
-  }
 });
 
 function hideLoading(){$('loading-screen').style.display='none';}
@@ -491,7 +480,7 @@ window.doRegister=async function(){
   if(pass.length<6){err.textContent='პაროლი მინიმუმ 6 სიმბოლო';return;}
   try{
     const cred=await createUserWithEmailAndPassword(auth,email,pass);
-    await setDoc(doc(db,'pool_users',cred.user.uid),{uid:cred.user.uid,name,email,role:'pending',whRole:'pending',createdAt:serverTimestamp()});
+    await setDoc(doc(db,'wh_users',cred.user.uid),{uid:cred.user.uid,name,email,role:'pending',createdAt:serverTimestamp()});
     await sendEmailVerification(cred.user);await signOut(auth);
     ok.textContent='✓ დარეგისტრირდით! დაელოდეთ დადასტურებას.';
     ['rg-name','rg-email','rg-pass'].forEach(id=>$(id).value='');
@@ -557,7 +546,7 @@ function startListeners(){
     renderIssues();renderDash();renderReport();
   },e=>{}));
   if(currentRole==='admin'){
-    unsub.push(onSnapshot(collection(db,'pool_users'),snap=>{
+    unsub.push(onSnapshot(collection(db,'wh_users'),snap=>{
       allUsers=snap.docs.map(d=>({id:d.id,...d.data()}));
       renderUsers();
     },e=>{}));
@@ -906,52 +895,48 @@ window.exportReport=function(){
 
 function emptyBox(ico,txt){return `<div class="empty"><span class="ico">${ico}</span><p>${txt}</p></div>`;}
 
-// ---------- USERS (admin) — warehouse team only (whRole) ----------
+// ---------- USERS (admin) — warehouse-only accounts (wh_users) ----------
 window.renderUsers=function(){
   if(!$('users-list'))return;
   const term=($('users-search').value||'').trim().toLowerCase();
   const filter=$('users-filter').value;
-  // base: only warehouse members (whRole set). "add" filter shows everyone so admin can onboard.
   let list=allUsers.slice();
-  if(filter==='add')list=list.filter(u=>!u.whRole);          // people not yet in the warehouse team
-  else if(filter==='all')list=list.filter(u=>!!u.whRole);    // whole team
-  else list=list.filter(u=>u.whRole===filter);               // specific role
-  list.sort((a,b)=>{const rank={pending:0,receiver:1,techreceiver:1,orderer:1,admin:2};return (rank[a.whRole]??9)-(rank[b.whRole]??9)||(a.name||'').localeCompare(b.name||'');});
+  if(filter!=='all')list=list.filter(u=>(u.role||'pending')===filter);
+  list.sort((a,b)=>{const rank={pending:0,receiver:1,techreceiver:1,orderer:1,admin:2};return (rank[a.role]??9)-(rank[b.role]??9)||(a.name||'').localeCompare(b.name||'');});
   if(term)list=list.filter(u=>(u.name||'').toLowerCase().includes(term)||(u.email||'').toLowerCase().includes(term));
-  if(!list.length){$('users-list').innerHTML=emptyBox('👥',filter==='add'?'დასამატებელი მომხმარებელი არ არის.':'საწყობის გუნდი ცარიელია. „➕ დასამატებლად" ნახე ვინ დაამატო.');return;}
+  if(!list.length){$('users-list').innerHTML=emptyBox('👥','მომხმარებელი არ მოიძებნა.');return;}
   const rlBadge={admin:'<span class="badge received">👑 ადმინი</span>',orderer:'<span class="badge ordered">🛒 შემკვეთი</span>',receiver:'<span class="badge arrived">📥 საწყობის მიმღები</span>',techreceiver:'<span class="badge transit">🔧 ტექნიკური მიმღები</span>',pending:'<span class="badge low">⏳ მოლოდინში</span>'};
   const me=currentUser?currentUser.uid:'';
   $('users-list').innerHTML=list.map(u=>{
-    const isMe=u.id===me;const wr=u.whRole||'';
+    const isMe=u.id===me;const wr=u.role||'pending';
     return `<div class="list-row ${wr==='pending'?'low':''}">
       <div class="row-top">
         <div><div class="row-name">${esc(u.name||'(უსახელო)')}${isMe?' <span class="muted">(თქვენ)</span>':''}</div>
         <div class="row-sub">${esc(u.email||'')}</div>
         <div class="row-sub">დარეგისტრ.: ${u.createdAt?fmtDate(u.createdAt):'—'}</div></div>
-        <div>${wr?rlBadge[wr]||esc(wr):'<span class="muted">გუნდში არ არის</span>'}</div>
+        <div>${rlBadge[wr]||esc(wr)}</div>
       </div>
       ${isMe?'':`<div class="row-actions">
         <select onchange="setRole('${u.id}',this.value)" style="width:auto;flex:0 1 auto;font-size:13px;padding:8px 10px">
-          ${!wr?'<option value="" selected>— აირჩიე როლი —</option>':''}
           <option value="pending" ${wr==='pending'?'selected':''}>⏳ მოლოდინში</option>
           <option value="orderer" ${wr==='orderer'?'selected':''}>🛒 შემკვეთი</option>
           <option value="receiver" ${wr==='receiver'?'selected':''}>📥 საწყობის მიმღები</option>
           <option value="techreceiver" ${wr==='techreceiver'?'selected':''}>🔧 ტექნიკური მიმღები</option>
           <option value="admin" ${wr==='admin'?'selected':''}>👑 ადმინი</option>
         </select>
-        ${wr?`<button class="btn btn-danger btn-sm" onclick="removeFromTeam('${u.id}','${esc((u.name||u.email||'').replace(/'/g,''))}')">გუნდიდან ამოღება</button>`:''}
+        <button class="btn btn-danger btn-sm" onclick="removeFromTeam('${u.id}','${esc((u.name||u.email||'').replace(/'/g,''))}')">🗑 წაშლა</button>
       </div>`}
     </div>`;
   }).join('');
 };
 window.setRole=async function(uid,role){
   if(!role)return;
-  try{await updateDoc(doc(db,'pool_users',uid),{whRole:role});toast('✓ როლი განახლდა','good');}
+  try{await updateDoc(doc(db,'wh_users',uid),{role});toast('✓ როლი განახლდა','good');}
   catch(e){toast('შეცდომა: '+e.message,'bad');}
 };
 window.removeFromTeam=async function(id,name){
-  if(!confirm(`„${name}" ამოვიღო საწყობის გუნდიდან?\n(ანგარიში არ წაიშლება — უბრალოდ ვეღარ შემოვა საწყობში.)`))return;
-  try{await updateDoc(doc(db,'pool_users',id),{whRole:null});toast('ამოღებულია გუნდიდან','warn');}
+  if(!confirm(`„${name}" წავშალო საწყობის მომხმარებლებიდან?`))return;
+  try{await deleteDoc(doc(db,'wh_users',id));toast('წაიშალა','warn');}
   catch(e){toast('შეცდომა: '+e.message,'bad');}
 };
 

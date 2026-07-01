@@ -1,26 +1,37 @@
 rules_version = '2';
+// საწყობის აპს ცალკე მომხმარებლები აქვს (wh_users) — აუზების აპთან კავშირი არ აქვს.
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-    function udata() { return get(/databases/$(database)/documents/pool_users/$(request.auth.uid)).data; }
-    function whRole() { return udata().get('whRole', ''); }
-    function poolRole() { return udata().get('role', ''); }
-    function approved() {
-      return signedIn() && (whRole() in ['admin','orderer','receiver','techreceiver'] || poolRole() in ['admin','orderer','receiver']);
+    function whRole() {
+      return get(/databases/$(database)/documents/wh_users/$(request.auth.uid)).data.get('role', '');
     }
-    function isAdmin() {
-      return signedIn() && (whRole() == 'admin' || poolRole() == 'admin');
-    }
+    function approved() { return signedIn() && whRole() in ['admin','orderer','receiver','techreceiver']; }
+    function isAdmin() { return signedIn() && whRole() == 'admin'; }
 
-    match /pool_users/{uid} {
+    // საწყობის მომხმარებლები. თითოეული თავის ჩანაწერს ქმნის (მხოლოდ pending/admin@pool.ge),
+    // როლს ცვლის მხოლოდ ადმინი — ასე თავს ვერავინ დაინიშნავს ადმინად.
+    match /wh_users/{uid} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && (request.resource.data.role == 'pending'
+            || (request.auth.token.email == 'admin@pool.ge' && request.resource.data.role == 'admin'));
       allow update, delete: if isAdmin();
     }
-    match /pool_reports/{id} { allow read, write: if signedIn(); }
+
+    // საწყობის მონაცემები — მხოლოდ დადასტურებული მომხმარებლები
     match /wh_products/{id} { allow read, write: if approved(); }
     match /wh_orders/{id}   { allow read, write: if approved(); }
     match /wh_moves/{id}    { allow read, write: if approved(); }
+
+    // --- აუზების აპი (ცალკე, ხელუხლებელი) ---
+    match /pool_users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update, delete: if signedIn()
+        && get(/databases/$(database)/documents/pool_users/$(request.auth.uid)).data.get('role','') == 'admin';
+    }
+    match /pool_reports/{id} { allow read, write: if signedIn(); }
   }
 }
