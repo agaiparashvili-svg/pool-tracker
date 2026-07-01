@@ -288,6 +288,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
         <input type="date" id="rep-from" onchange="renderReport()">
         <input type="date" id="rep-to" onchange="renderReport()">
         <button class="btn btn-light btn-sm" onclick="exportReport()">📥 ექსპორტი</button>
+        <button class="btn btn-danger btn-sm" id="btn-reset" onclick="archiveAndReset()" style="display:none">🗄️ ნულიდან დაწყება</button>
       </div>
       <div class="stats-grid" id="rep-stats"></div>
       <div id="report-list"></div>
@@ -396,7 +397,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendEmailVerification,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import{getFirestore,collection,doc,setDoc,getDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,serverTimestamp,increment}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import{getFirestore,collection,doc,setDoc,getDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,serverTimestamp,increment,writeBatch}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // Same Firebase project, but the warehouse has its own collections (wh_users, wh_*) — no link to the pool app.
 const firebaseConfig={
@@ -525,6 +526,7 @@ function buildNav(role){
   const ib=$('btn-import');if(ib)ib.style.display=canEditOrders()?'':'none';
   const sb=$('btn-sync');if(sb)sb.style.display=canEditOrders()?'':'none';
   const npb=$('btn-newprod');if(npb)npb.style.display=canEditOrders()?'':'none';
+  const rb=$('btn-reset');if(rb)rb.style.display=isAdmin()?'':'none';
   showSection('sec-dash');updateFab('sec-dash');
   startListeners();
 }
@@ -543,15 +545,15 @@ window.onFab=function(){const ctx=$('fab').dataset.ctx;if(ctx==='sec-stock')open
 // ---------- DATA LISTENERS ----------
 function startListeners(){
   unsub.push(onSnapshot(query(collection(db,'wh_products'),orderBy('name')),snap=>{
-    products=snap.docs.map(d=>({id:d.id,...d.data()}));
+    products=snap.docs.map(d=>({id:d.id,...d.data()})).filter(d=>!d.archived);
     renderStock();renderDash();fillProductSelect();renderReport();
   },e=>toast('მარაგის ჩატვირთვა ვერ მოხერხდა','bad')));
   unsub.push(onSnapshot(query(collection(db,'wh_orders'),orderBy('createdAt','desc')),snap=>{
-    orders=snap.docs.map(d=>({id:d.id,...d.data()}));
+    orders=snap.docs.map(d=>({id:d.id,...d.data()})).filter(d=>!d.archived);
     renderOrders();renderDash();renderArrivals();renderReport();
   },e=>{}));
   unsub.push(onSnapshot(query(collection(db,'wh_moves'),orderBy('createdAt','desc')),snap=>{
-    moves=snap.docs.map(d=>({id:d.id,...d.data()}));
+    moves=snap.docs.map(d=>({id:d.id,...d.data()})).filter(d=>!d.archived);
     renderIssues();renderDash();renderReport();
   },e=>{}));
   if(currentRole==='admin'){
@@ -905,6 +907,57 @@ window.exportReport=function(){
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'რეპორტი');
   XLSX.writeFile(wb,'პროდუქტების_რეპორტი_'+new Date().toISOString().slice(0,10)+'.xlsx');
   toast('ფაილი ჩამოიტვირთა ✓','good');
+};
+
+// ---------- ARCHIVE & RESET (admin) — save a full backup, then start from zero ----------
+function backupWorkbook(){
+  const wb=XLSX.utils.book_new();
+  // orders
+  const oh=['№','თარიღი','ფაილი','განყოფილება','დასახელება','კომენტარი','ერთეული','რაოდენობა','ფასი','სტატუსი','ჩამოსულია?','მიღების ეტაპი','ჩამოსული','შენიშვნა'];
+  const rcTxt={pending:'საწყობის მიმღები',wh:'ტექნიკური მიმღები',confirmed:'მიღებული',rejected:'უარყოფილი'};
+  const oa=[oh];orders.slice().sort((a,b)=>dnum(a.orderDate)-dnum(b.orderDate)).forEach((o,i)=>oa.push([i+1,o.orderDate?fmtDate(o.orderDate):'',o.sourceFile||'',o.department||'',orderName(o),o.purpose||'',o.unit||'',num(o.qty),o.price!=null&&o.price!==''?num(o.price):'',ST[ostat(o)].l,arrivedYesNo(o),rcTxt[receiptOf(o)]||'—',arrivedTarget(o),[o.note,o.techComment?('🔧 '+o.techComment):''].filter(Boolean).join(' | ')]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(oa),'შეკვეთები');
+  // issues (out moves)
+  const ih=['№','ნივთი','რაოდენობა','ერთეული','რაში დაეხარჯა','ვინ','თარიღი'];
+  const ia=[ih];moves.filter(m=>m.type==='out').forEach((m,i)=>ia.push([i+1,m.productName||'',num(m.qty),m.unit||'',m.note||'',m.byName||'',fmtDateTime(m.createdAt)]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ia),'გაცემები');
+  // stock
+  const sh=['№','პროდუქტი','ერთეული','კატეგორია','ნაშთი','მინ. მარაგი'];
+  const sa=[sh];products.forEach((p,i)=>sa.push([i+1,p.name||'',p.unit||'',p.category||'',num(p.stock),num(p.minStock)]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sa),'მარაგი');
+  // product report
+  const rows=buildReport();
+  const rh=['№','პროდუქტი','ერთეული','შეკვეთილი','ჩამოსული','გაცემული','ნაშთი'];
+  const ra=[rh];rows.forEach((e,i)=>ra.push([i+1,e.name,e.unit,e.ordered,e.arrived,e.issued,e.stock]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ra),'რეპორტი');
+  return wb;
+}
+async function archiveDocs(coll,arr,batchId){
+  for(let i=0;i<arr.length;i+=400){
+    const chunk=arr.slice(i,i+400);const b=writeBatch(db);
+    chunk.forEach(x=>b.update(doc(db,coll,x.id),{archived:true,archiveId:batchId}));
+    await b.commit();
+  }
+}
+window.archiveAndReset=async function(){
+  if(!isAdmin()){toast('მხოლოდ ადმინისთვის','bad');return;}
+  if(!window.XLSX){toast('Excel-ის ბიბლიოთეკა იტვირთება, სცადეთ ისევ','warn');return;}
+  const total=orders.length+moves.length+products.length;
+  if(!total){toast('უკვე ცარიელია','warn');return;}
+  if(!confirm(`ყველა მონაცემი დაარქივდება და გასუფთავდება:\n• ${orders.length} შეკვეთა\n• ${moves.length} მოძრაობა\n• ${products.length} პროდუქტი\n\nჯერ ჩამოიტვირთება Excel-ბექაფი. გავაგრძელო?`))return;
+  if(!confirm('დარწმუნებული ხართ? ეს ქმედება საწყობს ნულიდან იწყებს.'))return;
+  try{
+    // 1) download full backup
+    const stamp=new Date().toISOString().slice(0,16).replace('T','_').replace(':','-');
+    XLSX.writeFile(backupWorkbook(),'საწყობი_არქივი_'+stamp+'.xlsx');
+    // 2) archive (flag) then views clear automatically
+    toast('არქივირდება…','info');
+    const batchId=stamp;
+    await archiveDocs('wh_orders',orders,batchId);
+    await archiveDocs('wh_moves',moves,batchId);
+    await archiveDocs('wh_products',products,batchId);
+    toast('✓ დაარქივდა და გასუფთავდა — ნულიდან დაიწყო','good');
+  }catch(e){toast('შეცდომა: '+e.message,'bad');}
 };
 
 function emptyBox(ico,txt){return `<div class="empty"><span class="ico">${ico}</span><p>${txt}</p></div>`;}
