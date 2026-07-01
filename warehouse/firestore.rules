@@ -16,7 +16,7 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() && request.auth.uid == uid
         && (request.resource.data.role == 'pending'
-            || (request.auth.token.email == 'admin@pool.ge' && request.resource.data.role == 'admin'));
+            || (request.auth.token.email in ['admin@pool.ge','a.gaiparashvili@gmail.com'] && request.resource.data.role == 'admin'));
       allow update, delete: if isAdmin();
     }
 

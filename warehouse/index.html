@@ -454,7 +454,8 @@ onAuthStateChanged(auth,async(user)=>{
       const ref=doc(db,'wh_users',user.uid);
       let snap=await getDoc(ref);
       if(!snap.exists()){
-        const role=(user.email==='admin@pool.ge')?'admin':'pending';
+        const ADMINS=['admin@pool.ge','a.gaiparashvili@gmail.com'];
+        const role=ADMINS.includes((user.email||'').toLowerCase())?'admin':'pending';
         await setDoc(ref,{uid:user.uid,name:user.displayName||user.email,email:user.email,role,createdAt:serverTimestamp()});
         snap=await getDoc(ref);
       }
