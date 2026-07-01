@@ -732,9 +732,10 @@ window.confirmReceipt=async function(id,stage,accept){
   const o=orders.find(x=>x.id===id);if(!o)return;
   try{
     let receipt,extra;
-    if(!accept){receipt='rejected';extra={rejectedBy:currentName,rejectedAt:serverTimestamp(),rejectedStage:stage};}
+    const tcEl=$('tcmt_'+id);const techComment=(stage==='tech'&&tcEl)?tcEl.value.trim():undefined;
+    if(!accept){receipt='rejected';extra={rejectedBy:currentName,rejectedAt:serverTimestamp(),rejectedStage:stage};if(techComment!==undefined)extra.techComment=techComment;}
     else if(stage==='wh'){receipt='wh';extra={whReceivedBy:currentName,whReceivedAt:serverTimestamp()};}
-    else{receipt='confirmed';extra={receivedBy:currentName,receivedAt:serverTimestamp()};}
+    else{receipt='confirmed';extra={receivedBy:currentName,receivedAt:serverTimestamp()};if(techComment!==undefined)extra.techComment=techComment;}
     const merged={...o,receipt};
     const r=await reconcileStockTo(merged,stockTarget(merged),'მიღება დადასტურდა (ტექნიკური)','მიღება გაუქმდა');
     const data={receipt,appliedQty:r.appliedQty,...extra};
@@ -776,6 +777,7 @@ function arrCard(o,extra){
     <div class="row-top">
       <div><div class="row-name">${esc(orderName(o))}</div>
       ${o.purpose?'<div class="row-sub">🎯 '+esc(o.purpose)+'</div>':''}
+      ${o.techComment?'<div class="row-sub" style="color:#b45309;font-weight:700">🔧 '+esc(o.techComment)+'</div>':''}
       <div class="row-sub">${o.department?'🏢 '+esc(o.department)+' · ':''}${o.statusBy?'მონიშნა: '+esc(o.statusBy):''}</div>
       ${o.sourceFile?'<div class="row-sub">📄 '+esc(o.sourceFile)+'</div>':''}
       <div class="row-sub">📅 ${d&&!isNaN(d)?fmtDate(d):'—'}${o.receivedBy?' · მიიღო: '+esc(o.receivedBy):''}</div></div>
@@ -794,13 +796,16 @@ window.renderArrivals=function(){
   const stage2=arrived.filter(o=>receiptOf(o)==='wh').sort((a,b)=>dnum(a.whReceivedAt||a.arrivedAt)-dnum(b.whReceivedAt||b.arrivedAt));
   const confirmed=arrived.filter(o=>receiptOf(o)==='confirmed').sort((a,b)=>dnum(b.receivedAt||b.arrivedAt)-dnum(a.receivedAt||a.arrivedAt));
   const cf=canConfirm(),cft=canConfirmTech();
+  const isTech=currentRole==='techreceiver'; // technical receiver: sees ONLY their queue, not stage 1
   let html='';
-  // stage 1 — warehouse receiver
-  html+=`<h3 style="font-size:14px;font-weight:800;color:var(--warn);margin:4px 0 10px">⏳ საწყობის მიმღების დასადასტურებელი (${stage1.length})</h3>`;
-  html+=stage1.length?stage1.map(o=>arrCard(o,cf?`<div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}','wh',true)">✅ მივიღე</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}','wh',false)">❌ არ მივიღე</button></div>`:'<div class="row-sub muted">ელოდება საწყობის მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">ცარიელია ✓</p>';
-  // stage 2 — technical receiver (this confirmation adds to stock)
+  // stage 1 — warehouse receiver (hidden from the technical receiver until warehouse confirms)
+  if(!isTech){
+    html+=`<h3 style="font-size:14px;font-weight:800;color:var(--warn);margin:4px 0 10px">⏳ საწყობის მიმღების დასადასტურებელი (${stage1.length})</h3>`;
+    html+=stage1.length?stage1.map(o=>arrCard(o,cf?`<div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}','wh',true)">✅ მივიღე</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}','wh',false)">❌ არ მივიღე</button></div>`:'<div class="row-sub muted">ელოდება საწყობის მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">ცარიელია ✓</p>';
+  }
+  // stage 2 — technical receiver (this confirmation adds to stock). tech can add a comment (e.g. "სხვა ჩამოვიდა").
   html+=`<h3 style="font-size:14px;font-weight:800;color:#b45309;margin:18px 0 10px">🔧 ტექნიკური მიმღების დასადასტურებელი (${stage2.length})</h3>`;
-  html+=stage2.length?stage2.map(o=>arrCard(o,cft?`<div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}','tech',true)">✅ მივიღე ტექნიკურ საწყობში</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}','tech',false)">❌ არ მივიღე</button></div>`:'<div class="row-sub muted">ელოდება ტექნიკური მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">ცარიელია ✓</p>';
+  html+=stage2.length?stage2.map(o=>arrCard(o,cft?`<div style="margin-top:8px"><input id="tcmt_${o.id}" type="text" placeholder="🎯 კომენტარი (მაგ. სხვა ჩამოვიდა)" value="${esc(o.techComment||'')}" style="width:100%;margin-bottom:8px"><div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}','tech',true)">✅ მივიღე ტექნიკურ საწყობში</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}','tech',false)">❌ არ მივიღე</button></div></div>`:'<div class="row-sub muted">ელოდება ტექნიკური მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">ცარიელია ✓</p>';
   // confirmed (in stock)
   html+=`<h3 style="font-size:14px;font-weight:800;color:var(--good);margin:18px 0 10px">✅ მიღებული — მარაგში (${confirmed.length})</h3>`;
   html+=confirmed.length?confirmed.map(o=>ag(o)).join(''):'<p class="muted">ჯერ არაფერი მიღებულა</p>';
@@ -1116,7 +1121,7 @@ window.exportOrders=function(){
   const list=orders.slice().sort((a,b)=>dnum(a.orderDate)-dnum(b.orderDate));
   const rcTxt={pending:'საწყობის მიმღების მოლოდინში',wh:'ტექნიკური მიმღების მოლოდინში',confirmed:'მიღებული (მარაგში)',rejected:'უარყოფილი'};
   const aoa=[head];
-  list.forEach((o,i)=>aoa.push([i+1,o.orderDate?fmtDate(o.orderDate):'',o.sourceFile||'',o.department||'',orderName(o),o.purpose||'',o.unit||'',num(o.qty),o.price!=null&&o.price!==''?num(o.price):'',ST[ostat(o)].l,arrivedYesNo(o),rcTxt[receiptOf(o)]||'—',arrivedTarget(o),o.note||'']));
+  list.forEach((o,i)=>aoa.push([i+1,o.orderDate?fmtDate(o.orderDate):'',o.sourceFile||'',o.department||'',orderName(o),o.purpose||'',o.unit||'',num(o.qty),o.price!=null&&o.price!==''?num(o.price):'',ST[ostat(o)].l,arrivedYesNo(o),rcTxt[receiptOf(o)]||'—',arrivedTarget(o),[o.note,o.techComment?('🔧 '+o.techComment):''].filter(Boolean).join(' | ')]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[{wch:5},{wch:12},{wch:24},{wch:13},{wch:32},{wch:22},{wch:8},{wch:10},{wch:9},{wch:16},{wch:12},{wch:26},{wch:11},{wch:20}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'შეკვეთები');
