@@ -589,16 +589,18 @@ function renderDash(){
     <div class="stat-card"><div class="num ${notArr.length?'bad':''}">${notArr.length}</div><div class="lbl">ჩამოუსვლელი</div></div>
     <div class="stat-card"><div class="num ${transit?'warn':''}">${transit}</div><div class="lbl">გზაშია</div></div>
     <div class="stat-card"><div class="num">${arrived}</div><div class="lbl">ჩამოვიდა</div></div>`;
-  // not-arrived orders, sorted by date (oldest first), each with marker
+  // read-only status overview — no confirmation here (that happens in 🛒 შეკვეთები)
+  const rcTxt={pending:'⏳ საწყობის მიმღები',wh:'⏳ ტექნიკური მიმღები',confirmed:'✅ მარაგში',rejected:'❌ უარყოფილი'};
   const pend=notArr.slice().sort((a,b)=>dnum(a.orderDate)-dnum(b.orderDate));
   $('dash-pending').innerHTML=pend.length?pend.map(o=>{
-    const st=ostat(o);
+    const st=ostat(o);const arr=arrivedTarget(o);const rc=receiptOf(o);
     return `<div class="list-row ${st}" style="margin-bottom:8px">
       <div class="row-top">
         <div><div class="row-name">${esc(orderName(o))}</div>
-        <div class="row-sub">${o.orderDate?fmtDate(o.orderDate)+' · ':''}${o.department?esc(o.department)+' · ':''}${fmtN(num(o.qty))} ${esc(o.unit||'')}</div></div>
+        <div class="row-sub">${o.orderDate?fmtDate(o.orderDate)+' · ':''}${o.department?esc(o.department)+' · ':''}სულ: ${fmtN(num(o.qty))} ${esc(o.unit||'')}</div>
+        ${arr>0?'<div class="row-sub" style="color:var(--good);font-weight:700">მიღებული: '+fmtN(arr)+' '+esc(o.unit||'')+(arr<num(o.qty)?' · ნაწილობრივ':'')+'</div>':''}</div>
+        <div style="text-align:right"><span class="badge ${st}">${ST[st].e} ${ST[st].l}</span>${rc&&rcTxt[rc]?'<div class="row-sub muted" style="margin-top:3px">'+rcTxt[rc]+'</div>':''}</div>
       </div>
-      <div class="row-actions">${canMark()?statusSelect(o.id,st):'<span class="badge '+st+'">'+ST[st].e+' '+ST[st].l+'</span>'}</div>
     </div>`;
   }).join(''):'<p class="muted">ყველა შეკვეთა ჩამოსულია ✓</p>';
   $('dash-low').innerHTML=low.length?low.map(p=>{
@@ -808,13 +810,12 @@ window.renderArrivals=function(){
   const stage2=arrived.filter(o=>receiptOf(o)==='wh').sort((a,b)=>dnum(a.whReceivedAt||a.arrivedAt)-dnum(b.whReceivedAt||b.arrivedAt));
   const confirmed=arrived.filter(o=>receiptOf(o)==='confirmed').sort((a,b)=>dnum(b.receivedAt||b.arrivedAt)-dnum(a.receivedAt||a.arrivedAt));
   const cf=canConfirm(),cft=canConfirmTech();
-  const isTech=currentRole==='techreceiver'; // technical receiver: sees ONLY their queue, not stage 1
+  const isTech=currentRole==='techreceiver';
   let html='';
-  // stage 1 — warehouse receiver (hidden from the technical receiver until warehouse confirms)
-  if(!isTech){
-    html+=`<h3 style="font-size:14px;font-weight:800;color:var(--warn);margin:4px 0 10px">⏳ საწყობის მიმღების დასადასტურებელი (${stage1.length})</h3>`;
-    html+=stage1.length?stage1.map(o=>arrCard(o,cf?`<div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}','wh',true)">✅ მივიღე</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}','wh',false)">❌ არ მივიღე</button></div>`:'<div class="row-sub muted">ელოდება საწყობის მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">ცარიელია ✓</p>';
-  }
+  // stage 1 — warehouse receiver. Tech receiver sees these read-only ("ღიად დარჩენილი") until warehouse confirms.
+  const s1title=isTech?'📋 ღიად დარჩენილი (საწყობის მიღების მოლოდინში)':'⏳ საწყობის მიმღების დასადასტურებელი';
+  html+=`<h3 style="font-size:14px;font-weight:800;color:var(--warn);margin:4px 0 10px">${s1title} (${stage1.length})</h3>`;
+  html+=stage1.length?stage1.map(o=>arrCard(o,cf?`<div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}','wh',true)">✅ მივიღე</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}','wh',false)">❌ არ მივიღე</button></div>`:'<div class="row-sub muted">ელოდება საწყობის მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">ცარიელია ✓</p>';
   // stage 2 — technical receiver (this confirmation adds to stock). tech can add a comment (e.g. "სხვა ჩამოვიდა").
   html+=`<h3 style="font-size:14px;font-weight:800;color:#b45309;margin:18px 0 10px">🔧 ტექნიკური მიმღების დასადასტურებელი (${stage2.length})</h3>`;
   html+=stage2.length?stage2.map(o=>arrCard(o,cft?`<div style="margin-top:8px"><input id="tcmt_${o.id}" type="text" placeholder="🎯 კომენტარი (მაგ. სხვა ჩამოვიდა)" value="${esc(o.techComment||'')}" style="width:100%;margin-bottom:8px"><div class="row-actions"><button class="btn btn-good btn-sm" onclick="confirmReceipt('${o.id}','tech',true)">✅ მივიღე ტექნიკურ საწყობში</button><button class="btn btn-danger btn-sm" onclick="confirmReceipt('${o.id}','tech',false)">❌ არ მივიღე</button></div></div>`:'<div class="row-sub muted">ელოდება ტექნიკური მიმღების დადასტურებას</div>')).join(''):'<p class="muted" style="margin-bottom:14px">ცარიელია ✓</p>';
