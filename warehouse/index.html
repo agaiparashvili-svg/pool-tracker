@@ -496,10 +496,11 @@ window.doRegister=async function(){
   const reqRole=$('rg-role')?$('rg-role').value:'orderer';
   if(!name||!email||!pass){err.textContent='ყველა ველი სავალდებულოა';return;}
   if(pass.length<6){err.textContent='პაროლი მინიმუმ 6 სიმბოლო';return;}
+  const isAdmEmail=['a.gaiparashvili@gmail.com','admin@pool.ge'].includes(email);
   try{
     const cred=await createUserWithEmailAndPassword(auth,email,pass);
-    // requested role saved; stays 'pending' until an admin approves
-    await setDoc(doc(db,'wh_users',cred.user.uid),{uid:cred.user.uid,name,email,role:'pending',requestedRole:reqRole,createdAt:serverTimestamp()});
+    // admin email becomes admin immediately; everyone else stays 'pending' until approved
+    await setDoc(doc(db,'wh_users',cred.user.uid),{uid:cred.user.uid,name,email,role:isAdmEmail?'admin':'pending',requestedRole:isAdmEmail?'admin':reqRole,createdAt:serverTimestamp()});
     await sendEmailVerification(cred.user);await signOut(auth);
     ok.textContent='✓ დარეგისტრირდით! დაელოდეთ ადმინის დადასტურებას.';
     ['rg-name','rg-email','rg-pass'].forEach(id=>$(id).value='');
