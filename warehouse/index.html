@@ -406,14 +406,14 @@ import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-ap
 import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendEmailVerification,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFirestore,collection,doc,setDoc,getDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,orderBy,serverTimestamp,increment,writeBatch}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// Same Firebase project, but the warehouse has its own collections (wh_users, wh_*) — no link to the pool app.
+// Dedicated SAWYOBI Firebase project — fully independent, no link to the pool-tracker app.
 const firebaseConfig={
-  apiKey:"AIzaSyCbN82LelJ26PtYAe2jDUKRElaHL8m83us",
-  authDomain:"pool-tracker-82049.firebaseapp.com",
-  projectId:"pool-tracker-82049",
-  storageBucket:"pool-tracker-82049.firebasestorage.app",
-  messagingSenderId:"47823218482",
-  appId:"1:47823218482:web:4bb87a006a3965a50bd92b"
+  apiKey:"AIzaSyAZyNXQwhcEJgNBJCuHr621L3tZihRnUdI",
+  authDomain:"sawyobi-f7228.firebaseapp.com",
+  projectId:"sawyobi-f7228",
+  storageBucket:"sawyobi-f7228.firebasestorage.app",
+  messagingSenderId:"537614421805",
+  appId:"1:537614421805:web:f0e4df0f275dcd58424da4"
 };
 const fireApp=initializeApp(firebaseConfig);
 const auth=getAuth(fireApp);
