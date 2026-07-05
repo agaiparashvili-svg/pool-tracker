@@ -174,6 +174,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
       <div class="form-group"><label>სახელი და გვარი</label><input type="text" id="rg-name" placeholder="გიორგი მაისურაძე"></div>
       <div class="form-group"><label>ელ-ფოსტა</label><input type="email" id="rg-email" placeholder="mail@example.com"></div>
       <div class="form-group"><label>პაროლი</label><input type="password" id="rg-pass" placeholder="••••••••"></div>
+      <div class="form-group"><label>როლი (რას აკეთებ საწყობში)</label>
+        <select id="rg-role">
+          <option value="orderer">🛒 შემკვეთი — წერს/ტვირთავს შეკვეთებს</option>
+          <option value="receiver">📥 საწყობის მიმღები — ადასტურებს ჩამოსვლას</option>
+          <option value="techreceiver">🔧 ტექნიკური მიმღები — ადასტურებს ტექნიკურ საწყობში</option>
+        </select>
+      </div>
       <div id="rg-err" class="error-msg"></div><div id="rg-ok" class="success-msg"></div>
       <button class="btn btn-primary btn-full" onclick="doRegister()">რეგისტრაცია</button>
     </div>
@@ -486,13 +493,15 @@ window.doLogin=async function(){
 window.doRegister=async function(){
   const name=$('rg-name').value.trim(),email=$('rg-email').value.trim().toLowerCase(),pass=$('rg-pass').value;
   const err=$('rg-err'),ok=$('rg-ok');err.textContent='';ok.textContent='';
+  const reqRole=$('rg-role')?$('rg-role').value:'orderer';
   if(!name||!email||!pass){err.textContent='ყველა ველი სავალდებულოა';return;}
   if(pass.length<6){err.textContent='პაროლი მინიმუმ 6 სიმბოლო';return;}
   try{
     const cred=await createUserWithEmailAndPassword(auth,email,pass);
-    await setDoc(doc(db,'wh_users',cred.user.uid),{uid:cred.user.uid,name,email,role:'pending',createdAt:serverTimestamp()});
+    // requested role saved; stays 'pending' until an admin approves
+    await setDoc(doc(db,'wh_users',cred.user.uid),{uid:cred.user.uid,name,email,role:'pending',requestedRole:reqRole,createdAt:serverTimestamp()});
     await sendEmailVerification(cred.user);await signOut(auth);
-    ok.textContent='✓ დარეგისტრირდით! დაელოდეთ დადასტურებას.';
+    ok.textContent='✓ დარეგისტრირდით! დაელოდეთ ადმინის დადასტურებას.';
     ['rg-name','rg-email','rg-pass'].forEach(id=>$(id).value='');
   }catch(e){err.textContent=e.code==='auth/email-already-in-use'?'ელ-ფოსტა უკვე გამოყენებულია':e.message;}
 };
@@ -972,18 +981,22 @@ window.renderUsers=function(){
   list.sort((a,b)=>{const rank={pending:0,receiver:1,techreceiver:1,orderer:1,admin:2};return (rank[a.role]??9)-(rank[b.role]??9)||(a.name||'').localeCompare(b.name||'');});
   if(term)list=list.filter(u=>(u.name||'').toLowerCase().includes(term)||(u.email||'').toLowerCase().includes(term));
   if(!list.length){$('users-list').innerHTML=emptyBox('👥','მომხმარებელი არ მოიძებნა.');return;}
+  const rlLbl={admin:'👑 ადმინი',orderer:'🛒 შემკვეთი',receiver:'📥 საწყობის მიმღები',techreceiver:'🔧 ტექნიკური მიმღები',pending:'⏳ მოლოდინში'};
   const rlBadge={admin:'<span class="badge received">👑 ადმინი</span>',orderer:'<span class="badge ordered">🛒 შემკვეთი</span>',receiver:'<span class="badge arrived">📥 საწყობის მიმღები</span>',techreceiver:'<span class="badge transit">🔧 ტექნიკური მიმღები</span>',pending:'<span class="badge low">⏳ მოლოდინში</span>'};
   const me=currentUser?currentUser.uid:'';
   $('users-list').innerHTML=list.map(u=>{
     const isMe=u.id===me;const wr=u.role||'pending';
+    const req=u.requestedRole&&rlLbl[u.requestedRole]?u.requestedRole:'';
     return `<div class="list-row ${wr==='pending'?'low':''}">
       <div class="row-top">
         <div><div class="row-name">${esc(u.name||'(უსახელო)')}${isMe?' <span class="muted">(თქვენ)</span>':''}</div>
         <div class="row-sub">${esc(u.email||'')}</div>
+        ${wr==='pending'&&req?'<div class="row-sub" style="color:var(--accent);font-weight:700">ითხოვს: '+rlLbl[req]+'</div>':''}
         <div class="row-sub">დარეგისტრ.: ${u.createdAt?fmtDate(u.createdAt):'—'}</div></div>
         <div>${rlBadge[wr]||esc(wr)}</div>
       </div>
       ${isMe?'':`<div class="row-actions">
+        ${wr==='pending'&&req?`<button class="btn btn-good btn-sm" onclick="setRole('${u.id}','${req}')">✅ დაადასტურე (${rlLbl[req]})</button>`:''}
         <select onchange="setRole('${u.id}',this.value)" style="width:auto;flex:0 1 auto;font-size:13px;padding:8px 10px">
           <option value="pending" ${wr==='pending'?'selected':''}>⏳ მოლოდინში</option>
           <option value="orderer" ${wr==='orderer'?'selected':''}>🛒 შემკვეთი</option>
